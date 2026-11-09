@@ -163,9 +163,30 @@ try{
   const accountBState=await d.evaluate(()=>window.clearpageBridge.snapshot());
   assert.ok(accountBState.notes.every(n=>!n.text.includes('device A')&&!n.text.includes('device B')));
   assert.equal(stored.get(B).payload.notes.some(n=>n.text.includes('device A')),false);
+
+  // Verify a real Account A -> B identity change while A has an app session.
+  // The SDK publishes B's verified identity, and Clearpage MUST immediately
+  // hide/switch A's local workspace before displaying any B data.
+  await d.locator('#pageTitle').fill('Private B');
+  await d.locator('#editor').fill('Account B private data');
+  await d.evaluate(()=>window.clearpageBridge.flush());
+  await push(d);
+  await until(()=>stored.get(B)?.payload.notes.some(n=>n.text==='Account B private data'),'B separate server write');
+
+  await a.evaluate(()=>{
+    localStorage.setItem('clearpage.cloud.opted-in:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','1');
+    localStorage.setItem('thiepn:clearpage:account-session:v1:tokens',JSON.stringify({
+      accessToken:'synthetic-b',refreshToken:'synthetic-refresh-b',
+      expiresAt:Date.now()+3600000,scope:'openid email profile'
+    }));
+  });
+  await push(a);
+  await until(async()=>await a.evaluate(()=>window.clearpageBridge.scope())===':account:'+B,'A->B account switch');
+  await until(async()=>await a.locator('#editor').inputValue()==='Account B private data','B workspace cloud download after switch');
+  assert.ok(!(await a.locator('#editor').inputValue()).includes('device A'));
   assert.equal(problem.length,0,problem.join('; '));
   console.log('CLEARPAGE_TWO_DEVICE_SIMULATED_HTTP=PASS');
-  console.log('COVERED: offline pending local edits, first upload, second-device bootstrap, concurrent conflict copy, third-device convergence, cross-owner cloud isolation');
+  console.log('COVERED: offline pending local edits, first upload, second-device bootstrap, concurrent conflict copy, third-device convergence, cross-owner cloud isolation, same-browser Account A→B privacy');
 }finally{
   for(const ctx of sessions)await ctx.close().catch(()=>{});
   await browser.close();
