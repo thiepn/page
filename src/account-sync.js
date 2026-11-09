@@ -1,5 +1,5 @@
 import {createThiepnAccountSession,createThiepnBrowserSso} from './vendor/account-session/index.js';
-import {toState,validState,reconcile,isBlank,MAX_CLOUD_BYTES} from './merge.js';
+import {toState,validState,reconcile,isBlank,MAX_CLOUD_BYTES,equal} from './merge.js';
 import {ACCOUNT_ISSUER,ACCOUNT_ORIGIN,ACCOUNT_REDIRECT,ACCOUNT_CLIENT_ID,ACCOUNT_PUBLISHABLE_KEY} from './config.js';
 
 const byId=id=>document.getElementById(id);
@@ -9,7 +9,7 @@ const enabledConfig=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const desiredKey='clearpage.account.desired.v1';
 const cloudKey=id=>'clearpage.cloud.opted-in:'+id;
 const rest=ACCOUNT_ISSUER+'/rest/v1';
-const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const same=equal;
 const getFlag=k=>{try{return localStorage.getItem(k)==='1';}catch{return false;}};
 const setFlag=(k,v)=>{try{if(v)localStorage.setItem(k,'1');else localStorage.removeItem(k);}catch{}};
 
@@ -227,11 +227,22 @@ byId('accountSignOut').addEventListener('click',async()=>{
   try{
     // Guest-first: do not silently probe Account, redirect, or expose any account data
     // unless the user has explicitly opted into this app's Account experience.
+    await window.clearpageReady;
     if(!enabledConfig){render();return;}
     sso=createThiepnBrowserSso(createThiepnAccountSession({
       issuer:ACCOUNT_ISSUER,publishableKey:ACCOUNT_PUBLISHABLE_KEY,clientId:ACCOUNT_CLIENT_ID,
       redirectUri:ACCOUNT_REDIRECT,storageKey:'thiepn:clearpage:account-session:v1',authPolicy:'guest-first'
     }),{accountOrigin:ACCOUNT_ORIGIN});
+    sso.subscribe(identity=>{
+      if(!accountId)return;
+      if(identity.status==='signed-in'&&identity.id===accountId)return;
+      // Never continue showing user A's private workspace after a user B
+      // verification, logout or revocation. Mask immediately, then switch.
+      document.getElementById('app').style.visibility='hidden';
+      const promise=identity.status==='signed-in'?activate(identity.id):guest();
+      void promise.catch(()=>{say('Account identity changed; local data is locked until safely reloaded.');})
+        .finally(()=>{if(bridge.scope() === (accountId?':account:'+accountId:''))document.getElementById('app').style.visibility='';});
+    });
     const callback=new URL(ACCOUNT_REDIRECT).pathname===location.pathname;
     if(!callback&&!getFlag(desiredKey)){render();return;}
     if(callback){
