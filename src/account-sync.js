@@ -236,6 +236,9 @@ byId('accountSignOut').addEventListener('click',async()=>{
     sso.subscribe(identity=>{
       if(!accountId)return;
       if(identity.status==='signed-in'&&identity.id===accountId)return;
+      // A temporary offline verification failure must not discard access to
+      // the already-open local account workspace; only cloud writes pause.
+      if(identity.status==='unavailable'){cloud('Cloud: offline or unavailable',true);return;}
       // Never continue showing user A's private workspace after a user B
       // verification, logout or revocation. Mask immediately, then switch.
       document.getElementById('app').style.visibility='hidden';
