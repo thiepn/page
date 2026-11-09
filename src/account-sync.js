@@ -152,7 +152,7 @@ async function sync(){
   cloud('Cloud: syncing…');
   try{
     await runOnce(epoch,id);
-    if(epoch===generation&&id===accountId)cloud('Cloud: synced');
+    if(epoch===generation&&id===accountId&&!again)cloud('Cloud: synced');
   }catch(e){
     if(epoch===generation&&id===accountId){
       cloud(navigator.onLine?'Cloud: not synced':'Cloud: offline',true);
@@ -161,7 +161,11 @@ async function sync(){
     }
   }finally{
     busy=false;
-    if(again&&active&&epoch===generation){again=false;queueSync(1500);}
+    // A previous Account's in-flight request may finish after a new Account
+    // becomes active. Never strand the new Account's queued sync attempt.
+    const rerun=again;
+    again=false;
+    if(rerun&&active)queueSync(500);
   }
 }
 function queueSync(delay=1700){
