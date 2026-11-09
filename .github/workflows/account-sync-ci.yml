@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q "ACCOUNT_CLIENT_ID=''" src/config.js
-          grep -q "ACCOUNT_PUBLISHABLE_KEY=''" src/config.js
+          grep -q "ACCOUNT_PUBLISHABLE_KEY='sb_publishable_" src/config.js
           grep -q "false,now())" supabase/20261109_clearpage_optional_sync_PENDING.sql
           ! grep -RE 'service_role.*(eyJ|sb_secret_)' src
           test -f dist/index.html
