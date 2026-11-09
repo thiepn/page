@@ -44,7 +44,9 @@ create table if not exists public.clearpage_sync_state (
 );
 alter table public.clearpage_sync_state enable row level security;
 revoke all on public.clearpage_sync_state from PUBLIC,anon;
-grant select,insert,update on public.clearpage_sync_state to authenticated;
+grant select on public.clearpage_sync_state to authenticated;
+-- No direct INSERT/UPDATE: only the owner-derived CAS RPC can mutate revisions.
+revoke insert,update,delete on public.clearpage_sync_state from authenticated;
 
 -- This guard is the ONLY privileged routine. It returns a boolean, never data.
 -- Denies before Account registration, after disconnect or app suspension,
@@ -89,13 +91,14 @@ create policy clearpage_sync_update on public.clearpage_sync_state
    user_id=(select auth.uid()) and (select private.clearpage_client_allowed())
  );
 
--- SECURITY INVOKER: RLS still applies. No owner parameter is accepted.
+-- Narrow SECURITY DEFINER write boundary: owner is taken only from auth.uid().
+-- Base table grants disallow direct write/revision bypass. Never accept user_id.
 -- Revises a whole snapshot only against the caller's expected server revision.
 -- Identical mutation IDs can be replayed without advancing the revision.
 create or replace function public.clearpage_sync_cas(
  p_expected_revision bigint, p_payload jsonb, p_mutation_id uuid
 ) returns table(revision bigint,payload jsonb,last_mutation_id uuid)
-language plpgsql security invoker set search_path=''
+language plpgsql security definer set search_path=''
 as $$
 declare v_owner uuid := auth.uid();
 begin
