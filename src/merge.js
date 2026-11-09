@@ -65,10 +65,8 @@ export function reconcile(base,local,remote,makeId=()=>crypto.randomUUID()) {
       append(result,copied);conflicts++;
     }else if(y)conflicts++; // Local deletion versus remote edit: retain remote.
   }
-  // The initial editor placeholder must not pollute an existing cloud workspace.
-  const meaningfulActive=result.notes.filter(isMeaningful);
-  if(meaningfulActive.length && result.notes.length>meaningfulActive.length)
-    result.notes=meaningfulActive;
+  // Preserve deliberate blank pages. A fresh-device placeholder is removed
+  // only in the explicit initial bootstrap path, not by generic reconciliation.
   if(!result.notes.length){
     const blank=local.notes.find(n=>!isMeaningful(n))||remote.notes.find(n=>!isMeaningful(n));
     result.notes=[blank?structuredClone(blank):{id:makeId(),title:'',text:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}];
