@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --silent --show-error --retry 3 --retry-delay 3 --max-time 45 \
-            --output /tmp/clearpage-live.html https://page-thiepn-project.vercel.app/
+            --output /tmp/clearpage-live.html https://page.thiepn.dev/
           if ! cmp -s index.html /tmp/clearpage-live.html; then
             python3 - <<'PY'
           from pathlib import Path
