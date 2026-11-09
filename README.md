@@ -1,5 +1,7 @@
 # Clearpage
 
+**Live app:** https://page.thiepn.dev/
+
 A quiet, distraction-free writing app. This repository hosts **Clearpage v1.1** as a single static HTML file; no build step, accounts, analytics, network APIs, or server-side storage are required.
 
 ## Use
