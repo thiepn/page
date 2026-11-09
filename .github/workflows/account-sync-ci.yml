@@ -89,3 +89,29 @@ jobs:
       - run: npm run build
       - name: Test local-first guest and account workspaces in real Chromium
         run: node tests/browser-smoke.mjs
+
+  public-oauth-discovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Verify existing public Account OAuth discovery without credentials
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 2 --retry-delay 2 --max-time 20 \
+            https://hycegznamzjhwinegaai.supabase.co/.well-known/oauth-authorization-server/auth/v1 \
+            -o /tmp/clearpage-oauth-discovery.json
+          curl --fail --silent --show-error --location --retry 2 --retry-delay 2 --max-time 20 \
+            https://account.thiepn.dev/release.json \
+            -o /tmp/clearpage-account-release.json
+          python3 - <<'PY'
+          import json
+          from urllib.parse import urlparse
+          spec=json.load(open('/tmp/clearpage-oauth-discovery.json'))
+          release=json.load(open('/tmp/clearpage-account-release.json'))
+          assert urlparse(spec['authorization_endpoint']).hostname=='hycegznamzjhwinegaai.supabase.co'
+          assert urlparse(spec['token_endpoint']).hostname=='hycegznamzjhwinegaai.supabase.co'
+          assert 'authorization_code' in spec['grant_types_supported']
+          assert 'S256' in spec['code_challenge_methods_supported']
+          assert isinstance(release,dict) and release
+          print('CLEARPAGE_OAUTH_PUBLIC_DISCOVERY=PASS')
+          PY
