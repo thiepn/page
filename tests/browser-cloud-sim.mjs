@@ -184,9 +184,36 @@ try{
   await until(async()=>await a.evaluate(()=>window.clearpageBridge.scope())===':account:'+B,'A->B account switch');
   await until(async()=>await a.locator('#editor').inputValue()==='Account B private data','B workspace cloud download after switch');
   assert.ok(!(await a.locator('#editor').inputValue()).includes('device A'));
+
+  // User permanently deletes a B workspace note while offline.
+  // Another B device edits its older version. Neither side may silently
+  // restore a permanently deleted page or overwrite a simultaneous edit.
+  offlineCloud=true;
+  await a.locator('#openPages').click();
+  await a.locator('#pageList .delete-page').first().click();
+  await a.locator('#confirmDialog').click();
+  await a.locator('#trashTab').click();
+  await a.locator('#pageList .delete-page').first().click();
+  await a.locator('#confirmDialog').click();
+  await a.evaluate(()=>window.clearpageBridge.flush());
+  const afterDelete=await a.evaluate(()=>window.clearpageBridge.snapshot());
+  assert.ok(afterDelete.notes.every(n=>n.text!=='Account B private data'));
+  assert.ok(afterDelete.trash.every(n=>n.text!=='Account B private data'));
+
+  offlineCloud=false;
+  await d.locator('#editor').fill('Account B concurrent edit after other device deleted permanently');
+  await d.evaluate(()=>window.clearpageBridge.flush());
+  await push(d);
+  await until(()=>stored.get(B)?.payload.notes.some(n=>n.text==='Account B concurrent edit after other device deleted permanently'),'remote concurrent edit upload');
+  await push(a);
+  await until(async()=>/Permanent deletion conflicts/.test(await a.locator('#accountMessage').textContent()),'deletion/edit conflict is surfaced');
+  const afterConflict=await a.evaluate(()=>window.clearpageBridge.snapshot());
+  assert.ok(afterConflict.notes.every(n=>n.text!=='Account B private data'&&!n.text.includes('concurrent edit after')));
+  assert.ok(stored.get(B).payload.notes.some(n=>n.text.includes('concurrent edit after')),'remote writer is not overwritten');
+  assert.match(await a.locator('#cloudStatus').textContent(),/not synced/i);
   assert.equal(problem.length,0,problem.join('; '));
   console.log('CLEARPAGE_TWO_DEVICE_SIMULATED_HTTP=PASS');
-  console.log('COVERED: offline pending local edits, first upload, second-device bootstrap, concurrent conflict copy, third-device convergence, cross-owner cloud isolation, same-browser Account A→B privacy');
+  console.log('COVERED: offline pending local edits, first upload, second-device bootstrap, concurrent conflict copy, third-device convergence, cross-owner cloud isolation, same-browser Account A→B privacy, delete/edit conflict fail-closed');
 }finally{
   for(const ctx of sessions)await ctx.close().catch(()=>{});
   await browser.close();
