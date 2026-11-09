@@ -105,11 +105,23 @@ canonical Account identity and may be deleted through Account lifecycle.
   revisions, idempotency and direct-write denial. This is not live Supabase
   REST or real user/issuer certification.
 - Browser real-credential and real-CAS two-device acceptance is outstanding.
+  A separate **simulated-HTTP** Chromium scenario now exercises the complete
+  compiled sync client over mocked authenticated API requests: two isolated
+  browser profiles, first cloud bootstrap, offline pending edits, cross-device
+  simultaneous edits, conflict-copy preservation, third-device convergence,
+  Account A→B switching, and independent Account B cloud data. This does NOT
+  connect to actual users, the OAuth server or production PostgREST.
 - Verified CI: deterministic JS merge tests (14), static TypeScript build,
   real Chromium offline/local IndexedDB and A/B local workspace isolation,
-  disposable PostgreSQL RLS/CAS and operator-binding template, and actual
-  public OAuth discovery/Account release reachability. These do **not** prove
-  authenticated OAuth callbacks, cross-user live RLS, or real two-device sync.
+  simulated two-device browser network tests, disposable PostgreSQL RLS/CAS
+  and operator-binding template, and actual public OAuth discovery/Account
+  release reachability. These do **not** prove authenticated OAuth callbacks,
+  cross-user live RLS, or real two-device sync.
+- Offline editing works after an Account workspace has been opened through
+  a verified session. If the browser is fully reloaded offline, the SDK cannot
+  reverify identity and currently opens guest mode rather than exposing
+  unverified cached Account notes. This is a deliberate privacy/availability
+  trade-off and must be made clear to users before activation.
 - Only the THIEPN Account project should be touched by future operator
   migration; THIEPN Core remains unchanged and its Sync Protocol v1 is
   still a specification rather than a universal service.
