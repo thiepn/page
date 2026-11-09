@@ -94,6 +94,8 @@ jobs:
       - run: npm run build
       - name: Test local-first guest and account workspaces in real Chromium
         run: node tests/browser-smoke.mjs
+      - name: Test offline and concurrent multi-device HTTP sync against a simulated server
+        run: node tests/browser-cloud-sim.mjs
 
   public-oauth-discovery:
     runs-on: ubuntu-24.04
