@@ -88,4 +88,7 @@ test('backend refuses direct table writes and requires client + account grant',(
     assert.ok(sql.includes(phrase),phrase);
   }
   assert.ok(!sql.includes('grant select,insert,update'));
+  assert.ok(!sql.includes('grant usage on schema private'));
+  assert.match(sql,/create or replace function public\.clearpage_client_allowed\(\)/);
+  assert.match(sql,/revoke all on function public\.clearpage_client_allowed\(\) from PUBLIC,anon/);
 });
