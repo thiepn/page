@@ -687,8 +687,18 @@
       tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Transaction aborted'));
     });
   }
-  async function switchWorkspace(id) {
-    if(id!==null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw Error('Invalid account identity');
+  // Serialize all workspace changes. Identity A→B→guest notifications may
+  // arrive while an earlier IDB save/open is still pending; without a queue,
+  // a later request can return early against the old scope and the stale A
+  // request can subsequently display private notes under guest identity.
+  let workspaceSwitchQueue=Promise.resolve();
+  function switchWorkspace(id) {
+    if(id!==null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return Promise.reject(Error('Invalid account identity'));
+    const operation=workspaceSwitchQueue.catch(()=>{}).then(()=>doSwitchWorkspace(id));
+    workspaceSwitchQueue=operation;
+    return operation;
+  }
+  async function doSwitchWorkspace(id) {
     const next=id?':account:'+id:'';
     if(next===currentScope)return;
     await save();await writeQueue;
