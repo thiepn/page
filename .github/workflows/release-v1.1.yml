@@ -1,0 +1,53 @@
+name: Publish Clearpage v1.1 release
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-v1.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out exact release source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check script syntax and required functionality
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const script = html.match(/<script>([\s\S]*?)<\/script>/i)?.[1];
+          if (!script) throw Error('Missing inline application script');
+          fs.writeFileSync('/tmp/clearpage-app.js', script);
+          for (const requirement of ['indexedDB', 'localStorage', 'restore', 'search', 'backup']) {
+            if (!html.toLowerCase().includes(requirement.toLowerCase())) throw Error('Missing feature: ' + requirement);
+          }
+          NODE
+          node --check /tmp/clearpage-app.js
+      - name: Verify public HTTPS production content matches source
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 3 --max-time 45 \
+            --output /tmp/clearpage-live.html https://page-thiepn-project.vercel.app/
+          cmp index.html /tmp/clearpage-live.html
+          echo "Production HTML matches release source byte for byte"
+      - name: Publish GitHub release v1.1.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.1.0 >/dev/null 2>&1; then
+            echo "Release v1.1.0 already exists; not altering it"
+            exit 0
+          fi
+          gh release create v1.1.0 'index.html#Clearpage-v1.1.html' \
+            --target "$GITHUB_SHA" \
+            --title 'Clearpage v1.1' \
+            --notes 'First public release of Clearpage: a distraction-free offline-capable writing app with IndexedDB persistence, recovery snapshots, undo and recently deleted pages, instant search, keyboard navigation, JSON backup/restore, and TXT/Markdown export. Browser data stays local to each origin; migrate from file:// by exporting a JSON backup and importing it at the hosted URL.'
