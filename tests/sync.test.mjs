@@ -67,6 +67,28 @@ test('blank state is always guaranteed after deletion',()=>{
   const r=reconcile(base,local,remote);
   assert.ok(r.state.notes.length>=1);
 });
+
+test('concurrent permanent deletion cannot silently resurrect an edited page',()=>{
+  const base=s([n('sensitive','personal original'),n('keep','safe')]);
+  const local=s([n('keep','safe')]); // user permanently removed sensitive on local
+  const remote=s([n('sensitive','remote concurrent edit'),n('keep','safe')]);
+  assert.throws(()=>reconcile(base,local,remote),e=>
+    e?.code==='DELETE_EDIT_CONFLICT' && !String(e.message).includes('personal original'));
+});
+
+test('remote permanent deletion versus local edit blocks automatic reupload',()=>{
+  const base=s([n('sensitive','personal original'),n('keep','safe')]);
+  const local=s([n('sensitive','locally edited'),n('keep','safe')]);
+  const remote=s([n('keep','safe')]);
+  assert.throws(()=>reconcile(base,local,remote),e=>e?.code==='DELETE_EDIT_CONFLICT');
+});
+
+test('uncontested permanent deletion propagates across devices',()=>{
+  const base=s([n('sensitive','personal original'),n('keep','safe')]);
+  const deleted=s([n('keep','safe')]);
+  assert.deepEqual(reconcile(base,deleted,base).state,deleted);
+  assert.deepEqual(reconcile(base,base,deleted).state,deleted);
+});
 test('guest storage is separate from user-specific IndexedDB',()=>{
   const html=readFileSync('index.html','utf8');
   assert.match(html,/DB_NAME\+currentScope/);
