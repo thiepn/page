@@ -2,7 +2,7 @@
 -- This file is executed ONLY against the ephemeral PostgreSQL CI service.
 -- Load fixtures.sql, then staged Clearpage migration, before this test.
 -- Operator binding template already ran against a synthetic manual client.
-do $
+do $$
 begin
  if not exists (
    select 1 from public.account_first_party_oauth_clients r
@@ -13,7 +13,7 @@ begin
    and r.redirect_uri='https://page.thiepn.dev/auth/callback/'
    and r.active and r.automatic_identity_consent
  ) then raise exception 'manual operator binding was not installed'; end if;
-end $;
+end $$;
 insert into public.account_app_connections(user_id,app_slug,status) values
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','page','connected'),
  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','page','connected');
