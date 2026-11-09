@@ -323,7 +323,8 @@
   function setStatus(message, error=false) { status.textContent=message; status.dataset.error=String(error); }
   function storageFailure(e) {
     const conflict=e?.code==='CONFLICT';
-    if(conflict)storageBlocked=true;
+    // Never switch workspaces after any failed local commit.
+    storageBlocked=true;
     setStatus(conflict?'Other tab changed data — export a backup':'Not saved — export a backup',true);
     if(conflict)showToast('Another tab changed your saved data. Export a backup.');
   }
