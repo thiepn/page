@@ -37,7 +37,8 @@ create table public.account_app_permissions (
 create table public.account_first_party_oauth_clients (
  oauth_client_id uuid primary key, app_slug text, client_name text,
  client_uri text, redirect_uri text, automatic_identity_consent boolean,
- active boolean
+ active boolean, updated_at timestamptz default now(),
+ unique (app_slug,redirect_uri)
 );
 create table public.account_app_connections (
  user_id uuid references auth.users(id), app_slug text,
