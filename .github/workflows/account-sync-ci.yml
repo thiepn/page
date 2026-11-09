@@ -30,3 +30,42 @@ jobs:
           test -f dist/js/account-sync.js
           test -f dist/js/vendor/account-session/index.js
           test -f dist/js/vendor/account-session/browser-sso.js
+
+  postgres-rls-cas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: test_only_password
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Use disposable database only
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "postgres"
+          command -v psql
+          psql -v ON_ERROR_STOP=1 -c 'select current_database(), version()'
+      - name: Apply synthetic Account fixtures, pending migration and RLS/CAS tests
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f tests/sql/fixtures.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261109_clearpage_optional_sync_PENDING.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/rls-cas.sql
