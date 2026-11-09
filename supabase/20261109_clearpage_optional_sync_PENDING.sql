@@ -134,7 +134,7 @@ begin
      updated_at=case when s.last_mutation_id=p_mutation_id and s.payload=p_payload
                      then s.updated_at else now() end
    where s.user_id=v_owner
-     and (s.revision=p_expected_revision
+     and ((s.revision=p_expected_revision and s.last_mutation_id<>p_mutation_id)
        or (s.last_mutation_id=p_mutation_id and s.payload=p_payload))
    returning s.revision,s.payload,s.last_mutation_id;
  end if;
