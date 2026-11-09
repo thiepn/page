@@ -195,6 +195,7 @@ try{
   await a.locator('#trashTab').click();
   await a.locator('#pageList .delete-page').first().click();
   await a.locator('#confirmDialog').click();
+  await a.locator('#closePages').click();
   await a.evaluate(()=>window.clearpageBridge.flush());
   const afterDelete=await a.evaluate(()=>window.clearpageBridge.snapshot());
   assert.ok(afterDelete.notes.every(n=>n.text!=='Account B private data'));
