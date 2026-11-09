@@ -92,6 +92,19 @@ try{
   const count=await page.locator('#pageList').locator('button').count();
   assert.ok(count>=1,'search must return the matching page');
 
+  // Overlapping verified-identity transitions must resolve to the newest
+  // requested workspace, even if the earlier transition is still saving.
+  // Without serialization, the second (guest) request returns immediately
+  // while the first request finishes later and leaks Account A into guest UI.
+  const finalScope=await page.evaluate(async accountA=>{
+    const first=window.clearpageBridge.switchWorkspace(accountA);
+    const second=window.clearpageBridge.switchWorkspace(null);
+    await Promise.allSettled([first,second]);
+    return window.clearpageBridge.scope();
+  },accountA);
+  assert.equal(finalScope,'','last requested guest workspace must win overlapping identity transitions');
+  assert.ok((await page.evaluate(()=>window.clearpageBridge.snapshot())).notes.some(n=>n.text.includes('cinnamonbird')),'guest draft survives identity race');
+
   await page.reload();
   await page.evaluate(async()=>window.clearpageReady);
   assert.ok((await page.evaluate(()=>window.clearpageBridge.snapshot())).notes.some(n=>n.text.includes('cinnamonbird')));
