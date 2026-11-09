@@ -6,4 +6,4 @@ export const ACCOUNT_ISSUER='https://hycegznamzjhwinegaai.supabase.co';
 export const ACCOUNT_ORIGIN='https://account.thiepn.dev';
 export const ACCOUNT_REDIRECT='https://page.thiepn.dev/auth/callback/';
 export const ACCOUNT_CLIENT_ID=''; // reviewed client UUID after manual registration
-export const ACCOUNT_PUBLISHABLE_KEY=''; // public sb_publishable_... from account issuer
+export const ACCOUNT_PUBLISHABLE_KEY='sb_publishable_1rZzRPzfLMaAH5pIgCwIjA_19UPMIsR'; // public sb_publishable_... from account issuer
