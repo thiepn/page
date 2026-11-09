@@ -54,6 +54,15 @@ export function reconcile(base,local,remote,makeId=()=>crypto.randomUUID()) {
     const b=entry(base,id),x=entry(local,id),y=entry(remote,id);
     if(same(x,b)){append(result,y);continue;}
     if(same(y,b)||same(x,y)){append(result,x);continue;}
+    // A missing ID that existed in the common baseline means permanent
+    // deletion. If the other device concurrently changed that page, never
+    // silently resurrect it or discard the other device's edited text.
+    // Block automatic synchronization until the user resolves the conflict.
+    if(b && (!x || !y)){
+      const error=new Error('Permanent deletion conflicts with changes on another device. No cloud changes were made. Export a backup, then resolve the affected page on your devices.');
+      error.code='DELETE_EDIT_CONFLICT';
+      throw error;
+    }
     // Two edits both changed the same entity. Remote owns the original ID,
     // while local content is never silently thrown away.
     append(result,y);
