@@ -36,7 +36,19 @@ jobs:
           set -euo pipefail
           curl --fail --location --silent --show-error --retry 3 --retry-delay 3 --max-time 45 \
             --output /tmp/clearpage-live.html https://page-thiepn-project.vercel.app/
-          cmp index.html /tmp/clearpage-live.html
+          if ! cmp -s index.html /tmp/clearpage-live.html; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          src = Path('index.html').read_text()
+          live = Path('/tmp/clearpage-live.html').read_text(errors='replace')
+          print('SOURCE bytes:', len(src), 'LIVE bytes:', len(live))
+          print('LIVE initial 350 characters:', repr(live[:350]))
+          print('LIVE title:', re.findall(r'<title[^>]*>(.*?)</title>', live, flags=re.I|re.S)[:2])
+          print('contains app markers:', {x:x in live for x in ['A quiet place to write', 'indexedDB', 'restore', 'search']})
+          PY
+            exit 1
+          fi
           echo "Production HTML matches release source byte for byte"
       - name: Publish GitHub release v1.1.0
         env:
