@@ -7,7 +7,7 @@ This branch is a candidate implementation, not a live Account/Sync launch.
 
 Guest mode is unchanged: local IndexedDB, recovery snapshots, JSON backup, no login.
 Account mode uses the *existing* THIEPN Account OAuth 2.1 / PKCE shared session SDK
-(pinned from thiepn/account on 2026-11-09). It does NOT implement Google authentication,
+(byte-for-byte equivalent to thiepn/account commit `746f4ffe747dfea615c8b3c871a65305ef003b73`, except NodeNext relative import extensions). It does NOT implement Google authentication,
 new passwords, cross-origin cookies or a new THIEPN user database.
 
 The Account is intentionally a separate local IndexedDB workspace keyed by the
@@ -47,18 +47,31 @@ committed before cloud CAS. No realtime editing, E2EE or background sync guarant
    `https://page.thiepn.dev/auth/callback/`. As of this implementation,
    no matching client was found. If one appears, reconcile it; do not
    create a duplicate.
-3. Use thiepn/account's **manual-only** first-party OAuth client onboarding:
-   register **one** public Authorization Code+refresh client with
+3. In an explicit, operator-supervised registration window, follow
+   thiepn/account's **manual-only** first-party OAuth onboarding. Account's
+   documented procedure requires the app to be active before registering:
+   temporarily activate the staged `page` registry entry immediately before
+   registration, and restore `active=false` if registration cannot complete.
+   In Supabase Dashboard → **THIEPN Account** → Authentication → OAuth Apps,
+   create **exactly one** client named `THIEPN Clearpage`, of type **Public**,
+   with client URI `https://page.thiepn.dev/` and one redirect URI
+   `https://page.thiepn.dev/auth/callback/`. Configure Authorization Code+refresh with
    `token_endpoint_auth_method=none`, S256 PKCE, exact callback, then pin the
    UUID to app slug `page` in an idempotent reviewed **Account migration**.
    Set automatic basic identity consent only after review. Never run DCR in
    a push/PR/schedule workflow. Do not edit Account's sign-in frontend.
-4. Only then mark the Account app registry `page` active. Verify
-   `resolve_thiepn_first_party_sso_probe` returns exact verified origin,
-   eligibility and connection handling.
-5. Copy the verified **public** client UUID and Supabase **publishable** key
-   into `src/config.js` (the default empty values fail closed). Never
-   store service_role, client secrets or refresh tokens in repository config.
+4. Once the UUID has been issued, use the guarded binding template
+   `supabase/20261109_clearpage_first_party_BIND_ONLY_AFTER_MANUAL_CLIENT_TEMPLATE.sql`
+   as a **reviewed thiepn/account migration** after replacing its deliberately
+   invalid UUID sentinel. It validates the public client, exact URI and app
+   manifest, pins one binding, and leaves the app active. Do not run it from
+   Clearpage CI or on every push. Verify the production SSO probe from the
+   exact origin, eligibility, disconnect/reconnect and credential-free browser.
+5. Set **only the verified public client UUID** in `src/config.js`.
+   The existing THIEPN Account `sb_publishable_` key has already been pinned;
+   it is an intentionally public browser key, not a service credential.
+   The empty client UUID currently fails closed. Never add service-role keys,
+   OAuth client secrets, or refresh tokens to the repository.
 6. Build with `npm install --ignore-scripts && npm run check`; set the Vercel
    `page` project root build output `dist`, deploy only reviewed green
    code. Confirm `/auth/callback/` routes to the app shell, never an
@@ -86,10 +99,17 @@ canonical Account identity and may be deleted through Account lifecycle.
 ## Known limitations / release blockers
 
 - No Clearpage OAuth public client is registered yet; SDK must remain gated.
-- Pending SQL is not applied to production or independently pgTAP tested.
+- Pending SQL and operator binding are **not applied to production**. Both are
+  exercised in disposable PostgreSQL 17 CI with synthetic authenticated/anon
+  roles, owner RLS, client-ID binding, disconnect/grant revocation, CAS stale
+  revisions, idempotency and direct-write denial. This is not live Supabase
+  REST or real user/issuer certification.
 - Browser real-credential and real-CAS two-device acceptance is outstanding.
-- TypeScript build and deterministic merge tests are automated; this does not
-  substitute for live OAuth, RLS and multi-device verification.
+- Verified CI: deterministic JS merge tests (14), static TypeScript build,
+  real Chromium offline/local IndexedDB and A/B local workspace isolation,
+  disposable PostgreSQL RLS/CAS and operator-binding template, and actual
+  public OAuth discovery/Account release reachability. These do **not** prove
+  authenticated OAuth callbacks, cross-user live RLS, or real two-device sync.
 - Only the THIEPN Account project should be touched by future operator
   migration; THIEPN Core remains unchanged and its Sync Protocol v1 is
   still a specification rather than a universal service.
