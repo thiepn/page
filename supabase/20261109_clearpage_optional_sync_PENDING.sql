@@ -48,10 +48,12 @@ grant select on public.clearpage_sync_state to authenticated;
 -- No direct INSERT/UPDATE: only the owner-derived CAS RPC can mutate revisions.
 revoke insert,update,delete on public.clearpage_sync_state from authenticated;
 
--- This guard is the ONLY privileged routine. It returns a boolean, never data.
+-- This guard is narrowly privileged and returns a boolean, never data.
+-- Keep it under public: granting USAGE on the existing private schema would
+-- unintentionally expose unrelated pre-existing private routines.
 -- Denies before Account registration, after disconnect or app suspension,
 -- and for every other OAuth client, even another THIEPN first-party app.
-create or replace function private.clearpage_client_allowed()
+create or replace function public.clearpage_client_allowed()
 returns boolean language sql stable security definer set search_path=''
 as $$
   select (select auth.uid()) is not null
@@ -69,26 +71,25 @@ as $$
          and c.status='connected' and g.status='granted'
      );
 $$;
-revoke all on function private.clearpage_client_allowed() from PUBLIC,anon;
-grant usage on schema private to authenticated;
-grant execute on function private.clearpage_client_allowed() to authenticated;
+revoke all on function public.clearpage_client_allowed() from PUBLIC,anon;
+grant execute on function public.clearpage_client_allowed() to authenticated;
 
 drop policy if exists clearpage_sync_select on public.clearpage_sync_state;
 create policy clearpage_sync_select on public.clearpage_sync_state
  for select to authenticated using (
-   user_id=(select auth.uid()) and (select private.clearpage_client_allowed())
+   user_id=(select auth.uid()) and (select public.clearpage_client_allowed())
  );
 drop policy if exists clearpage_sync_insert on public.clearpage_sync_state;
 create policy clearpage_sync_insert on public.clearpage_sync_state
  for insert to authenticated with check (
-   user_id=(select auth.uid()) and (select private.clearpage_client_allowed())
+   user_id=(select auth.uid()) and (select public.clearpage_client_allowed())
  );
 drop policy if exists clearpage_sync_update on public.clearpage_sync_state;
 create policy clearpage_sync_update on public.clearpage_sync_state
  for update to authenticated using (
-   user_id=(select auth.uid()) and (select private.clearpage_client_allowed())
+   user_id=(select auth.uid()) and (select public.clearpage_client_allowed())
  ) with check (
-   user_id=(select auth.uid()) and (select private.clearpage_client_allowed())
+   user_id=(select auth.uid()) and (select public.clearpage_client_allowed())
  );
 
 -- Narrow SECURITY DEFINER write boundary: owner is taken only from auth.uid().
@@ -102,7 +103,7 @@ language plpgsql security definer set search_path=''
 as $$
 declare v_owner uuid := auth.uid();
 begin
- if v_owner is null or not private.clearpage_client_allowed() then
+ if v_owner is null or not public.clearpage_client_allowed() then
    raise exception 'clearpage_access_denied' using errcode='42501';
  end if;
  if p_expected_revision is null or p_expected_revision < 0
