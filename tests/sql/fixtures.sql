@@ -48,3 +48,21 @@ create table public.account_app_grants (
  permission_id text, status text,
  primary key(user_id,app_slug,permission_id)
 );
+
+-- A synthetic manually-created public OAuth client for operator binding tests.
+create table auth.oauth_clients (
+ id uuid primary key,
+ client_name text not null,
+ client_type text not null,
+ redirect_uris text not null,
+ token_endpoint_auth_method text not null,
+ grant_types text not null,
+ deleted_at timestamptz,
+ client_uri text,
+ updated_at timestamptz default now()
+);
+insert into auth.oauth_clients
+ (id,client_name,client_type,redirect_uris,token_endpoint_auth_method,grant_types,deleted_at,client_uri)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','THIEPN Clearpage',
+ 'public','https://page.thiepn.dev/auth/callback/',
+ 'none','authorization_code,refresh_token',null,null);
