@@ -91,6 +91,7 @@ async function runOnce(epoch,id){
   if(!token)throw Error('Account token unavailable');
   await bridge.flush();
   checkContext(epoch,id);
+  let retryBase=null; // Last observed cloud snapshot, for retry without duplicating conflict copies.
   for(let attempt=0;attempt<4;attempt++){
     checkContext(epoch,id);
     const local=toState(bridge.snapshot());
@@ -107,7 +108,7 @@ async function runOnce(epoch,id){
       // Fresh account workspace: use the existing server state without uploading a blank placeholder.
       desired=remote.payload;
     }else{
-      const merge=reconcile(baseline?.state||null,local,remote.payload);
+      const merge=reconcile(retryBase||baseline?.state||null,local,remote.payload);
       desired=merge.state;conflicts=merge.conflicts;
     }
     if(!validState(desired))throw Error('Invalid merged cloud data');
@@ -136,6 +137,10 @@ async function runOnce(epoch,id){
       if(conflicts)bridge.notify(conflicts+' concurrent edit(s) preserved as conflict copies');
       return;
     }
+    // CAS lost to another device. The previous remote state is now the merge
+    // base for this *attempt only*: the local candidate already incorporated
+    // its contents. Reusing an older persistent base would duplicate copies.
+    retryBase=remote?.payload||{schema:1,notes:[],trash:[]};
     // Concurrent server revision: retry from the new remote state. Never overwrite blind.
   }
   throw Error('Cloud changed repeatedly. Local copy is safe; try syncing again.');
