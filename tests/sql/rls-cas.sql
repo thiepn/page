@@ -1,11 +1,19 @@
 \set ON_ERROR_STOP on
 -- This file is executed ONLY against the ephemeral PostgreSQL CI service.
 -- Load fixtures.sql, then staged Clearpage migration, before this test.
-update public.account_apps set active=true where slug='page';
-insert into public.account_first_party_oauth_clients
- (oauth_client_id,app_slug,client_name,client_uri,redirect_uri,automatic_identity_consent,active)
- values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','page','Clearpage Test',
-         'https://page.thiepn.dev/','https://page.thiepn.dev/auth/callback/',true,true);
+-- Operator binding template already ran against a synthetic manual client.
+do $
+begin
+ if not exists (
+   select 1 from public.account_first_party_oauth_clients r
+   join public.account_apps a on a.slug=r.app_slug
+   where a.slug='page' and a.active
+   and r.oauth_client_id='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+   and r.client_uri='https://page.thiepn.dev/'
+   and r.redirect_uri='https://page.thiepn.dev/auth/callback/'
+   and r.active and r.automatic_identity_consent
+ ) then raise exception 'manual operator binding was not installed'; end if;
+end $;
 insert into public.account_app_connections(user_id,app_slug,status) values
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','page','connected'),
  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','page','connected');
