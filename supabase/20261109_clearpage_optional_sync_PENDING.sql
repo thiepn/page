@@ -111,21 +111,30 @@ begin
     or octet_length(p_payload::text)>10485760 then
    raise exception 'clearpage_payload_invalid' using errcode='22023';
  end if;
- return query
-  insert into public.clearpage_sync_state as s (user_id,revision,payload,last_mutation_id)
-  select v_owner,1,p_payload,p_mutation_id where p_expected_revision=0
-  on conflict(user_id) do update set
-    revision=case
-      when s.last_mutation_id=p_mutation_id and s.payload=p_payload then s.revision
-      else s.revision+1 end,
-    payload=excluded.payload,
-    last_mutation_id=excluded.last_mutation_id,
-    updated_at=case
-      when s.last_mutation_id=p_mutation_id and s.payload=p_payload then s.updated_at
-      else now() end
-  where (s.revision=p_expected_revision)
-     or (s.last_mutation_id=p_mutation_id and s.payload=p_payload)
-  returning s.revision,s.payload,s.last_mutation_id;
+ if p_expected_revision=0 then
+   return query
+   insert into public.clearpage_sync_state as s (user_id,revision,payload,last_mutation_id)
+   values(v_owner,1,p_payload,p_mutation_id)
+   on conflict(user_id) do update set
+     revision=s.revision,
+     payload=s.payload,
+     last_mutation_id=s.last_mutation_id
+   where s.last_mutation_id=p_mutation_id and s.payload=p_payload
+   returning s.revision,s.payload,s.last_mutation_id;
+ else
+   return query
+   update public.clearpage_sync_state as s set
+     revision=case when s.last_mutation_id=p_mutation_id and s.payload=p_payload
+                   then s.revision else s.revision+1 end,
+     payload=p_payload,
+     last_mutation_id=p_mutation_id,
+     updated_at=case when s.last_mutation_id=p_mutation_id and s.payload=p_payload
+                     then s.updated_at else now() end
+   where s.user_id=v_owner
+     and (s.revision=p_expected_revision
+       or (s.last_mutation_id=p_mutation_id and s.payload=p_payload))
+   returning s.revision,s.payload,s.last_mutation_id;
+ end if;
 end;
 $$;
 revoke all on function public.clearpage_sync_cas(bigint,jsonb,uuid) from public,anon;
