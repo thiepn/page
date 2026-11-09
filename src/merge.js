@@ -3,7 +3,17 @@
 export const MAX_CLOUD_BYTES = 10 * 1024 * 1024;
 export const MAX_PAGES = 5000;
 
-const serial = x => JSON.stringify(x ?? null);
+export function canonical(value) {
+  if(Array.isArray(value))return value.map(canonical);
+  if(value && typeof value==='object'){
+    const result={};
+    for(const key of Object.keys(value).sort())result[key]=canonical(value[key]);
+    return result;
+  }
+  return value;
+}
+export const equal=(a,b)=>JSON.stringify(canonical(a??null))===JSON.stringify(canonical(b??null));
+const serial = x => JSON.stringify(canonical(x??null));
 const entry = (snapshot,id) => {
   const note=snapshot.notes.find(n=>n.id===id);
   if(note)return {kind:'notes',note};
