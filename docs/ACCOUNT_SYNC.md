@@ -25,6 +25,19 @@ The public RLS read policy is bound to both verified UUID and the *exact*
 registered Clearpage OAuth client; disconnect and denied basic grants fail closed.
 Every write is a server CAS and direct client table updates are revoked.
 
+**Permanent-deletion conflict handling:** when a page was permanently removed
+on one device but simultaneously edited on another, sync now **stops without
+writing a merge** and displays an explicit "Permanent deletion conflicts"
+message. It neither resurrects a locally purged page nor discards the remote
+edit. The remote server may still contain the edited content: permanent
+deletion is not complete everywhere until every device has resolved this
+conflict. Keep a JSON backup. To honor deletion, delete the updated page
+on the other device, sync that device, then retry the original device.
+To keep the edited page instead, restore/recreate a new copy after exporting
+both device backups; do not assume the conflict automatically resolves.
+A future release may offer a dedicated conflict-resolution UI, but no
+unreviewed auto-resolution is implemented here.
+
 Cloud payload limit is 10 MiB, separate from local limits. Failed/offline sync
 never overwrites local drafts or claims cloud success. A disappearing server
 snapshot after an existing synced baseline is a hard conflict, not a blank
