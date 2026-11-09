@@ -69,3 +69,22 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/sql/fixtures.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261109_clearpage_optional_sync_PENDING.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/rls-cas.sql
+
+  browser-local-first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Install pinned test-only browser harness
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Test local-first guest and account workspaces in real Chromium
+        run: node tests/browser-smoke.mjs
