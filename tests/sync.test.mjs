@@ -48,6 +48,17 @@ test('independent pages from devices merge without overwriting',()=>{
   const r=reconcile(base,local,remote);
   assert.deepEqual(new Set(r.state.notes.map(x=>x.id)),new Set(['base','l','r']));
 });
+test('retry rebases onto last observed server version without duplicating prior conflict copies',()=>{
+  const base=s([n('a','old')]), local=s([n('a','local')]), firstRemote=s([n('a','remote')]);
+  const first=reconcile(base,local,firstRemote,()=> 'copy');
+  assert.equal(first.state.notes.length,2);
+  // CAS fails, second server read contains a separate new page but same a.
+  const updatedRemote=s([n('a','remote'),n('b','other device')]);
+  const retry=reconcile(firstRemote,first.state,updatedRemote,()=> 'newcopy');
+  assert.equal(retry.conflicts,0);
+  assert.equal(retry.state.notes.filter(x=>x.text==='local').length,1);
+  assert.equal(retry.state.notes.find(x=>x.id==='b')?.text,'other device');
+});
 test('cross-collection duplicate ID is invalid',()=>{
   assert.equal(validState(s([n('a')],[n('a')])),false);
 });
