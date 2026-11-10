@@ -46,60 +46,49 @@ clearly named conflict pages; trash and permanent deletion are not silently
 reversed by an older device. The latest clean merged state is locally
 committed before cloud CAS. No realtime editing, E2EE or background sync guarantee.
 
-## Required operator-only activation
+## Operator-only activation and release gates
 
-1. **COMPLETE (2026-11-10):** The SQL in
-   `supabase/20261109_clearpage_optional_sync_PENDING.sql` was applied in the
-   **existing THIEPN Account** project as migration
-   `20261110000901_clearpage_optional_sync_inactive_v12` after fixing the
-   production `identity_scope='shared'` constraint. Source control is
-   preserved in **draft thiepn/account PR #90** at
-   https://github.com/thiepn/account/pull/90. The app remains **inactive**;
-   its isolated owner RLS/CAS schema is installed and empty. Do **not**
-   execute this migration a second time.
-2. Inspect production `auth.oauth_clients` and
-   `account_first_party_oauth_clients` for an existing exact
-   `THIEPN Clearpage` registration, product origin
-   `https://page.thiepn.dev/`, callback
-   `https://page.thiepn.dev/auth/callback/`. As of this implementation,
-   no matching client was found. If one appears, reconcile it; do not
-   create a duplicate.
-3. In an explicit, operator-supervised registration window, follow
-   thiepn/account's **manual-only** first-party OAuth onboarding. Account's
-   documented procedure requires the app to be active before registering:
-   temporarily activate the staged `page` registry entry immediately before
-   registration, and restore `active=false` if registration cannot complete.
-   In Supabase Dashboard → **THIEPN Account** → Authentication → OAuth Apps,
-   create **exactly one** client named `THIEPN Clearpage`, of type **Public**,
-   with client URI `https://page.thiepn.dev/` and one redirect URI
-   `https://page.thiepn.dev/auth/callback/`. Configure Authorization Code+refresh with
-   `token_endpoint_auth_method=none`, S256 PKCE, exact callback, then pin the
-   UUID to app slug `page` in an idempotent reviewed **Account migration**.
-   Set automatic basic identity consent only after review. Never run DCR in
-   a push/PR/schedule workflow. Do not edit Account's sign-in frontend.
-4. Once the UUID has been issued, use the guarded binding template
-   `supabase/20261109_clearpage_first_party_BIND_ONLY_AFTER_MANUAL_CLIENT_TEMPLATE.sql`
-   as a **reviewed thiepn/account migration** after replacing its deliberately
-   invalid UUID sentinel. It validates the public client, exact URI and app
-   manifest, pins one binding, and leaves the app active. Do not run it from
-   Clearpage CI or on every push. Verify the production SSO probe from the
-   exact origin, eligibility, disconnect/reconnect and credential-free browser.
-5. Set **only the verified public client UUID** in `src/config.js`.
-   The existing THIEPN Account `sb_publishable_` key has already been pinned;
-   it is an intentionally public browser key, not a service credential.
-   The empty client UUID currently fails closed. Never add service-role keys,
-   OAuth client secrets, or refresh tokens to the repository.
-6. Build with `npm install --ignore-scripts && npm run check`; set the Vercel
-   `page` project root build output `dist`, deploy only reviewed green
-   code. Confirm `/auth/callback/` routes to the app shell, never an
-   unrelated route or service-worker cache.
-7. Run manual **disposable-account** end-to-end tests in Chromium, Firefox,
-   WebKit and Android. Include login from Account, callback and refresh;
-   account switch A→B; cross-account RLS denial; revoke app in Account;
-   browser offline/online and full local storage; two-device concurrent
-   editing and deletion; crash/timeout during CAS; guest import consent;
-   sign out without deleting notes; restore backup; account deletion cascade.
-   Do not claim release-ready sync until these gates pass.
+1. **COMPLETE:** Base Account migration `20261110000901_clearpage_optional_sync_inactive_v12`
+   installed into the existing THIEPN Account project. The Account app
+   `page` remains inactive with isolated RLS/CAS and no synced user rows.
+2. **COMPLETE:** One public OAuth client named `THIEPN Clearpage` was registered
+   by the operator on 2026-11-10, UUID
+   `088b34ff-84ad-4746-a030-cc517159a17a`. Its only redirect is
+   `https://page.thiepn.dev/auth/callback/`, client URI
+   `https://page.thiepn.dev/`, grants `authorization_code,refresh_token`,
+   token authentication `none`. Production inventory confirms exactly one
+   matching active client. **Do not register another.**
+3. **COMPLETE / INACTIVE:** Account migration
+   `20261110154934_clearpage_public_client_staged_inactive_v12` pins the
+   approved UUID to app slug `page` with **binding.active=false** and
+   **automatic_identity_consent=false**. The Account app remains **inactive**.
+   This exact applied migration is mirrored in draft Account PR #90:
+   https://github.com/thiepn/account/pull/90. The public SSO eligibility probe
+   returned `null`, and the RLS client guard returned `false` with a synthetic
+   authenticated token claiming this UUID. Neither client nor user data was modified
+   in the test. Do not rerun a second client registration.
+4. **COMPLETE / DRAFT ONLY:** `src/config.js` pins only the public UUID and
+   existing public Supabase publishable key. Never store OAuth client secrets,
+   service-role keys or refresh tokens in this repository. Guest mode remains
+   local-first with opt-in Account sign-in and separately opt-in cloud sync.
+5. **PENDING:** A separately reviewed activation transaction, based on
+   `supabase/20261109_clearpage_first_party_BIND_ONLY_AFTER_MANUAL_CLIENT_TEMPLATE.sql`,
+   may switch the verified client binding, automatic basic identity consent
+   and Account app to active **only after authorization to conduct live acceptance**.
+   The original template has NOT been applied. Never automatically register
+   another OAuth client, merge either draft, deploy Clearpage or release before
+   all gates pass.
+6. **PENDING:** Run real disposable-account login/callback/refresh, Account
+   A→B switching, denied cross-user RLS, app disconnect/revocation and
+   reconnect, offline/online plus full local storage, two-device concurrent
+   editing and permanent deletion, CAS timeout/recovery, guest import consent,
+   backup/restore, and account deletion cascade in Chromium, Firefox, WebKit,
+   Android and remote devices. Verify `/auth/callback/` routes to the app
+   shell and is not mis-cached by the service worker. The existing Chromium
+   two-device HTTP simulation and PostgreSQL CI are NOT live OAuth certification.
+7. **NO-GO:** Keep Clearpage PR #1 and Account PR #90 draft/open/unmerged,
+   THIEPN Core unchanged, and the public Clearpage v1.1 deployment untouched
+   until the evidence and explicit release approvals are complete.
 
 ## User behavior after activation
 
@@ -115,15 +104,17 @@ canonical Account identity and may be deleted through Account lifecycle.
 
 ## Known limitations / release blockers
 
-- No Clearpage OAuth public client is registered yet; SDK must remain gated.
-- The **inactive** base migration is now installed and verified in production
-  Account: `page` app active=false; manifest shared identity with isolated
-  data; required basic permission; RLS enabled; anon SELECT and authenticated
-  direct writes denied; no OAuth client, binding or synced rows. Anonymous and
-  unregistered-authenticated negative authorization tests also passed in
-  rolled-back live SQL transactions. The operator-only OAuth **binding**
-  template is still **not applied**. These tests do not certify actual OAuth
-  tokens, cross-user REST responses or live multi-device writes.
+- The one public OAuth client exists and is pinned in the draft, but the
+  Account app and first-party binding remain deliberately inactive. The
+  **staged binding** was applied and verified; the **activation template**
+  was NOT applied. Account SSO eligibility and live RLS still deny use,
+  so OAuth callback/refresh and real cross-user or two-device acceptance
+  have not been certified.
+- The **inactive** base migration is installed and verified in production:
+  shared identity, isolated user data, RLS enabled, anon SELECT and
+  authenticated direct writes denied, zero synced rows. Anonymous,
+  unregistered-client and newly registered-but-inactive-client negative
+  authorization tests passed; these do not prove live authenticated flows.
 - Supabase advisors identify the deliberate authenticated-callable
   `SECURITY DEFINER` guard and CAS functions. These are explicitly guarded
   by owner UUID + exact OAuth client + connected app + required grant;
@@ -146,7 +137,7 @@ canonical Account identity and may be deleted through Account lifecycle.
   reverify identity and currently opens guest mode rather than exposing
   unverified cached Account notes. This is a deliberate privacy/availability
   trade-off and must be made clear to users before activation.
-- Only the THIEPN Account project was modified for the inactive schema;
+- Only the THIEPN Account project was modified for the inactive schema and binding;
   THIEPN Core remains unchanged and its Sync Protocol v1 is still a
   specification rather than a universal service. The Clearpage PR remains
   draft/unmerged and public Clearpage production remains v1.1.
