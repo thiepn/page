@@ -71,6 +71,8 @@ jobs:
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f tests/sql/fixtures.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261109_clearpage_optional_sync_PENDING.sql
+          # Real onboarding staged an inactive binding before any activation.
+          psql -v ON_ERROR_STOP=1 -f tests/sql/staged-inactive-binding.sql
           # CI only: replace the UUID placeholder with a synthetic client fixture.
           sed 's/REPLACE_WITH_MANUALLY_ISSUED_CLIENT_UUID/cccccccc-cccc-4ccc-8ccc-cccccccccccc/g' \
             supabase/20261109_clearpage_first_party_BIND_ONLY_AFTER_MANUAL_CLIENT_TEMPLATE.sql \
