@@ -48,11 +48,15 @@ committed before cloud CAS. No realtime editing, E2EE or background sync guarant
 
 ## Required operator-only activation
 
-1. Review and apply the **pending SQL** in
-   `supabase/20261109_clearpage_optional_sync_PENDING.sql` against the
-   **existing THIEPN Account** project only, as a reviewed Account migration.
-   This registers the Clearpage app **inactive** and stages private owner
-   storage/RLS/CAS. Do not use another Supabase project.
+1. **COMPLETE (2026-11-10):** The SQL in
+   `supabase/20261109_clearpage_optional_sync_PENDING.sql` was applied in the
+   **existing THIEPN Account** project as migration
+   `20261110000901_clearpage_optional_sync_inactive_v12` after fixing the
+   production `identity_scope='shared'` constraint. Source control is
+   preserved in **draft thiepn/account PR #90** at
+   https://github.com/thiepn/account/pull/90. The app remains **inactive**;
+   its isolated owner RLS/CAS schema is installed and empty. Do **not**
+   execute this migration a second time.
 2. Inspect production `auth.oauth_clients` and
    `account_first_party_oauth_clients` for an existing exact
    `THIEPN Clearpage` registration, product origin
@@ -112,11 +116,18 @@ canonical Account identity and may be deleted through Account lifecycle.
 ## Known limitations / release blockers
 
 - No Clearpage OAuth public client is registered yet; SDK must remain gated.
-- Pending SQL and operator binding are **not applied to production**. Both are
-  exercised in disposable PostgreSQL 17 CI with synthetic authenticated/anon
-  roles, owner RLS, client-ID binding, disconnect/grant revocation, CAS stale
-  revisions, idempotency and direct-write denial. This is not live Supabase
-  REST or real user/issuer certification.
+- The **inactive** base migration is now installed and verified in production
+  Account: `page` app active=false; manifest shared identity with isolated
+  data; required basic permission; RLS enabled; anon SELECT and authenticated
+  direct writes denied; no OAuth client, binding or synced rows. Anonymous and
+  unregistered-authenticated negative authorization tests also passed in
+  rolled-back live SQL transactions. The operator-only OAuth **binding**
+  template is still **not applied**. These tests do not certify actual OAuth
+  tokens, cross-user REST responses or live multi-device writes.
+- Supabase advisors identify the deliberate authenticated-callable
+  `SECURITY DEFINER` guard and CAS functions. These are explicitly guarded
+  by owner UUID + exact OAuth client + connected app + required grant;
+  review their privilege contract again before activating the client.
 - Browser real-credential and real-CAS two-device acceptance is outstanding.
   A separate **simulated-HTTP** Chromium scenario now exercises the complete
   compiled sync client over mocked authenticated API requests: two isolated
@@ -124,7 +135,7 @@ canonical Account identity and may be deleted through Account lifecycle.
   simultaneous edits, conflict-copy preservation, third-device convergence,
   Account A→B switching, and independent Account B cloud data. This does NOT
   connect to actual users, the OAuth server or production PostgREST.
-- Verified CI: deterministic JS merge tests (14), static TypeScript build,
+- Verified CI: deterministic JS merge tests (17), static TypeScript build,
   real Chromium offline/local IndexedDB and A/B local workspace isolation,
   simulated two-device browser network tests, disposable PostgreSQL RLS/CAS
   and operator-binding template, and actual public OAuth discovery/Account
@@ -135,6 +146,7 @@ canonical Account identity and may be deleted through Account lifecycle.
   reverify identity and currently opens guest mode rather than exposing
   unverified cached Account notes. This is a deliberate privacy/availability
   trade-off and must be made clear to users before activation.
-- Only the THIEPN Account project should be touched by future operator
-  migration; THIEPN Core remains unchanged and its Sync Protocol v1 is
-  still a specification rather than a universal service.
+- Only the THIEPN Account project was modified for the inactive schema;
+  THIEPN Core remains unchanged and its Sync Protocol v1 is still a
+  specification rather than a universal service. The Clearpage PR remains
+  draft/unmerged and public Clearpage production remains v1.1.
