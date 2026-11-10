@@ -9,7 +9,7 @@ on conflict(slug) do update set
 
 insert into public.account_app_manifests
  (app_slug,manifest_version,identity_scope,data_scope,export_scope,capabilities,core_app_id,updated_at)
-values ('page',1,'private','isolated','app-owned',
+values ('page',1,'shared','isolated','app-owned',
  '{"account":true,"guestFirst":true,"isolatedData":true,"sync":true,"cloud_saves":true,"export_data":true}'::jsonb,
  null,now())
 on conflict(app_slug) do update set
