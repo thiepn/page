@@ -96,10 +96,12 @@ test('guest storage is separate from user-specific IndexedDB',()=>{
   assert.match(html,/currentScope \? null : normalize\(getJSON\(LEGACY_KEY\)\)/);
   assert.match(html,/case 'account'/);
 });
-test('no default OAuth client credentials or accidental auto-upload',()=>{
+test('verified public OAuth client still requires explicit guest-first opt-in',()=>{
   const config=readFileSync('src/config.js','utf8');
   const sync=readFileSync('src/account-sync.js','utf8');
-  assert.match(config,/ACCOUNT_CLIENT_ID=''/);
+  assert.match(config,/ACCOUNT_CLIENT_ID='088b34ff-84ad-4746-a030-cc517159a17a'/);
+  assert.match(config,/ACCOUNT_REDIRECT='https:\/\/page\.thiepn\.dev\/auth\/callback\/'/);
+  assert.doesNotMatch(config,/service_role|client_secret|sk_test_/i);
   assert.match(sync,/if\(!callback&&!getFlag\(desiredKey\)\)/);
   assert.match(sync,/accountEnable/);
   assert.match(sync,/window.confirm\(/);
