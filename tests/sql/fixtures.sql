@@ -2,6 +2,9 @@
 -- Not a production migration; NO actual Account users, credentials or private data.
 create role anon nologin;
 create role authenticated nologin;
+-- Mirror actual Supabase project defaults for new tables in public.
+-- Without this fixture the original migration's TRUNCATE grant escaped CI.
+alter default privileges in schema public grant all on tables to authenticated;
 
 create schema auth;
 create function auth.jwt() returns jsonb language sql stable as $$

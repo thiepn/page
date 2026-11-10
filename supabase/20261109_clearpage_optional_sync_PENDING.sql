@@ -43,10 +43,12 @@ create table if not exists public.clearpage_sync_state (
   )
 );
 alter table public.clearpage_sync_state enable row level security;
-revoke all on public.clearpage_sync_state from PUBLIC,anon;
+-- Supabase's default PUBLIC-schema grants can include TRUNCATE, REFERENCES,
+-- TRIGGER and MAINTAIN for authenticated. RLS does NOT restrict TRUNCATE.
+-- Deny all table privileges first, then grant only owner-scoped SELECT.
+-- INSERT/UPDATE remain exclusive to the guarded SECURITY DEFINER CAS RPC.
+revoke all on public.clearpage_sync_state from PUBLIC,anon,authenticated;
 grant select on public.clearpage_sync_state to authenticated;
--- No direct INSERT/UPDATE: only the owner-derived CAS RPC can mutate revisions.
-revoke insert,update,delete on public.clearpage_sync_state from authenticated;
 
 -- This guard is narrowly privileged and returns a boolean, never data.
 -- Keep it under public: granting USAGE on the existing private schema would

@@ -104,6 +104,22 @@ canonical Account identity and may be deleted through Account lifecycle.
 
 ## Known limitations / release blockers
 
+- **CONFIRMED ACCOUNT ACL DEFECT (2026-11-11):** live PostgreSQL 17
+  `authenticated` has `TRUNCATE`, `REFERENCES`, `TRIGGER`, and `MAINTAIN`
+  on `public.clearpage_sync_state` due to Supabase default public-table grants.
+  `TRUNCATE` is not controlled by RLS. A source fix and disposable fixture
+  assertion revoke all `PUBLIC, anon, authenticated` privileges, then regrant
+  `SELECT` to `authenticated`. **The production ACL is not yet repaired.**
+  Do not activate the app or claim release readiness until an explicit reviewed
+  follow-up Account migration has narrowed live privileges, verified each
+  denied privilege, and retained the guarded CAS RPC. No production data was
+  modified by the source/CI correction. This is a DB-role overpermission,
+  not demonstrated arbitrary SQL execution from a browser.
+- The callable `SECURITY DEFINER` guard and CAS RPC retain their intended
+  authenticated EXECUTE rights, with `search_path=''` and explicit
+  auth.uid/client/app/connection/grant checks; final post-activation REST
+  verification remains required. Neither definer is authorized for `anon`.
+
 - The one public OAuth client exists and is pinned in the draft, but the
   Account app and first-party binding remain deliberately inactive. The
   **staged binding** was applied and verified; the **activation template**

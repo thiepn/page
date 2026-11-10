@@ -1,4 +1,21 @@
 \set ON_ERROR_STOP on
+-- Check the entire table ACL; RLS does not govern TRUNCATE or REFERENCES.
+-- The fixture deliberately grants all privileges by default to authenticated.
+do $
+declare v_priv text;
+begin
+  if not has_table_privilege('authenticated','public.clearpage_sync_state','SELECT')
+     then raise exception 'owner-scoped authenticated SELECT must remain available'; end if;
+  foreach v_priv in array array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']
+  loop
+    if has_table_privilege('authenticated','public.clearpage_sync_state',v_priv)
+      then raise exception 'Unexpected authenticated table privilege: %',v_priv; end if;
+  end loop;
+  if has_table_privilege('anon','public.clearpage_sync_state','SELECT')
+     or has_table_privilege('anon','public.clearpage_sync_state','TRUNCATE')
+     then raise exception 'Anonymous table access unexpectedly granted'; end if;
+end $;
+\echo 'CLEARPAGE_TABLE_ACL_LEAST_PRIVILEGE=PASS'
 -- This file is executed ONLY against the ephemeral PostgreSQL CI service.
 -- Load fixtures.sql, then staged Clearpage migration, before this test.
 -- Operator binding template already ran against a synthetic manual client.
