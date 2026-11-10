@@ -24,8 +24,10 @@ create table public.account_apps (
 );
 create table public.account_app_manifests (
  app_slug text primary key references public.account_apps(slug),
- manifest_version int, identity_scope text, data_scope text,
- export_scope text, capabilities jsonb, core_app_id text,
+ manifest_version int, identity_scope text check (identity_scope='shared'),
+ data_scope text check (data_scope='isolated'),
+ export_scope text check (export_scope in ('none','app-owned','platform-metadata')),
+ capabilities jsonb check (jsonb_typeof(capabilities)='object'), core_app_id text,
  updated_at timestamptz default now()
 );
 create table public.account_app_permissions (
