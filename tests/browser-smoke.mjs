@@ -24,7 +24,12 @@ const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1280,height:850}});
 const page=await context.newPage();
 const errors=[];
+const unpromptedAccountRequests=[];
 page.on('pageerror',e=>errors.push(String(e)));
+page.on('request',request=>{
+  if(request.url().startsWith('https://hycegznamzjhwinegaai.supabase.co/'))
+    unpromptedAccountRequests.push(request.url());
+});
 const flush=()=>page.evaluate(async()=>window.clearpageBridge.flush());
 const switchTo=id=>page.evaluate(async id=>window.clearpageBridge.switchWorkspace(id),id);
 try{
@@ -34,8 +39,9 @@ try{
   assert.equal(await page.locator('#accountConnect').count(),1,'Account UI available');
   await page.locator('#menuButton').click();
   await page.locator('[data-action="account"]').click();
-  assert.equal(await page.locator('#accountConnect').isDisabled(),true,'unregistered OAuth cannot authorize');
-  assert.match(await page.locator('#accountMessage').innerText(),/not activated/i);
+  assert.equal(await page.locator('#accountConnect').isDisabled(),false,'verified public OAuth client permits explicit opt-in in draft');
+  assert.match(await page.locator('#accountMessage').innerText(),/Guest mode: no account or cloud upload is required/i);
+  assert.deepEqual(unpromptedAccountRequests,[],'guest-first entry must not silently contact Account issuer');
   await page.locator('#accountClose').click();
 
   await title.fill('Guest journal');
