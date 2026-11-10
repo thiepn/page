@@ -5,5 +5,5 @@
 export const ACCOUNT_ISSUER='https://hycegznamzjhwinegaai.supabase.co';
 export const ACCOUNT_ORIGIN='https://account.thiepn.dev';
 export const ACCOUNT_REDIRECT='https://page.thiepn.dev/auth/callback/';
-export const ACCOUNT_CLIENT_ID=''; // reviewed client UUID after manual registration
+export const ACCOUNT_CLIENT_ID='088b34ff-84ad-4746-a030-cc517159a17a'; // operator-registered public UUID; activation still gated by Account registry
 export const ACCOUNT_PUBLISHABLE_KEY='sb_publishable_1rZzRPzfLMaAH5pIgCwIjA_19UPMIsR'; // public sb_publishable_... from account issuer
