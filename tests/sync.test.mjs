@@ -108,7 +108,7 @@ test('verified public OAuth client still requires explicit guest-first opt-in',(
 });
 test('backend refuses direct table writes and requires client + account grant',()=>{
   const sql=readFileSync('supabase/20261109_clearpage_optional_sync_PENDING.sql','utf8');
-  for(const phrase of ['revoke insert,update,delete','clearpage_client_allowed','oauth_client_id','identity.basic',"c.status='connected'","g.status='granted'",'p_expected_revision','p_mutation_id','auth.uid()']){
+  for(const phrase of ['revoke all on public.clearpage_sync_state from PUBLIC,anon,authenticated','grant select on public.clearpage_sync_state to authenticated','clearpage_client_allowed','oauth_client_id','identity.basic',"c.status='connected'","g.status='granted'",'p_expected_revision','p_mutation_id','auth.uid()']){
     assert.ok(sql.includes(phrase),phrase);
   }
   assert.ok(!sql.includes('grant select,insert,update'));

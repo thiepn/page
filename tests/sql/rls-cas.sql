@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 -- Check the entire table ACL; RLS does not govern TRUNCATE or REFERENCES.
 -- The fixture deliberately grants all privileges by default to authenticated.
-do $
+do $acl$
 declare v_priv text;
 begin
   if not has_table_privilege('authenticated','public.clearpage_sync_state','SELECT')
@@ -14,7 +14,7 @@ begin
   if has_table_privilege('anon','public.clearpage_sync_state','SELECT')
      or has_table_privilege('anon','public.clearpage_sync_state','TRUNCATE')
      then raise exception 'Anonymous table access unexpectedly granted'; end if;
-end $;
+end $acl$;
 \echo 'CLEARPAGE_TABLE_ACL_LEAST_PRIVILEGE=PASS'
 -- This file is executed ONLY against the ephemeral PostgreSQL CI service.
 -- Load fixtures.sql, then staged Clearpage migration, before this test.
