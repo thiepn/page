@@ -19,11 +19,14 @@ jobs:
           node-version: '22'
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run check
-      - name: Assert no private credentials or implicit production activation
+      - name: Assert verified public client, explicit opt-in and no deployment activation
         run: |
           set -euo pipefail
-          grep -q "ACCOUNT_CLIENT_ID=''" src/config.js
+          grep -Fq "ACCOUNT_CLIENT_ID='088b34ff-84ad-4746-a030-cc517159a17a'" src/config.js
+          grep -Fq "ACCOUNT_REDIRECT='https://page.thiepn.dev/auth/callback/'" src/config.js
           grep -q "ACCOUNT_PUBLISHABLE_KEY='sb_publishable_" src/config.js
+          grep -Fq 'if(!callback&&!getFlag(desiredKey))' src/account-sync.js
+          grep -Fq 'if(!enabledConfig||!sso)return;' src/account-sync.js
           grep -q "false,now())" supabase/20261109_clearpage_optional_sync_PENDING.sql
           ! grep -RE 'service_role.*(eyJ|sb_secret_)' src
           test -f dist/index.html
