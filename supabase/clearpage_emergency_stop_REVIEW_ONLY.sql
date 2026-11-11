@@ -48,21 +48,32 @@ begin
     select 1 from public.account_apps where slug='page' and active
   ) then raise exception 'clearpage_emergency_stop_incomplete'; end if;
 
-  -- The operation must NOT broaden table privileges or weaken RLS/CAS.
+  -- No unrelated ACL/RLS precondition here. Otherwise an unrelated drift
+  -- raises an exception that ROLLS BACK deactivation during an emergency.
+  -- Verify privilege drift only AFTER the scoped deactivation has committed.
+end $clearpage_emergency_stop$;
+commit;
+
+-- Post-commit security audit is a separate alarm, NOT a rollback precondition.
+-- If the ACL has drifted, containment is incomplete: escalate immediately,
+-- but NEVER undo the successfully committed Account app/binding deactivation.
+do $clearpage_post_commit_audit$
+declare v_bad_priv text;
+begin
   if (select relrowsecurity from pg_class
-       where oid='public.clearpage_sync_state'::regclass) is distinct from true
-     then raise exception 'clearpage_rls_missing'; end if;
-  if not has_table_privilege('authenticated',
-        'public.clearpage_sync_state','SELECT')
-     or has_table_privilege('authenticated',
-        'public.clearpage_sync_state','TRUNCATE')
-     or has_table_privilege('authenticated',
-        'public.clearpage_sync_state','UPDATE')
-     then raise exception 'clearpage_acl_changed'; end if;
+       where oid=to_regclass('public.clearpage_sync_state')) is distinct from true
+     then raise warning 'CLEARPAGE_EMERGENCY_STOP_COMMITTED_BUT_RLS_NEEDS_REPAIR'; end if;
+  if not has_table_privilege('authenticated','public.clearpage_sync_state','SELECT')
+    then raise warning 'CLEARPAGE_EMERGENCY_STOP_COMMITTED_BUT_SELECT_MISSING'; end if;
+  foreach v_bad_priv in array array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']
+  loop
+    if has_table_privilege('authenticated','public.clearpage_sync_state',v_bad_priv)
+      then raise warning 'CLEARPAGE_EMERGENCY_STOP_COMMITTED_BUT_TABLE_ACL_DRIFT:%',v_bad_priv;
+    end if;
+  end loop;
   if not has_function_privilege('authenticated',
         'public.clearpage_sync_cas(bigint,jsonb,uuid)','EXECUTE')
      or has_function_privilege('anon',
         'public.clearpage_sync_cas(bigint,jsonb,uuid)','EXECUTE')
-     then raise exception 'clearpage_cas_acl_changed'; end if;
-end $clearpage_emergency_stop$;
-commit;
+     then raise warning 'CLEARPAGE_EMERGENCY_STOP_COMMITTED_BUT_CAS_ACL_DRIFT'; end if;
+end $clearpage_post_commit_audit$;

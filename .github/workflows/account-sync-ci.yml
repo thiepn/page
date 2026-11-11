@@ -92,6 +92,11 @@ jobs:
           # deactivation. This only mutates ephemeral localhost postgres:17.
           psql -v ON_ERROR_STOP=1 -c "update public.account_first_party_oauth_clients set active=true,automatic_identity_consent=true where app_slug='page'; update public.account_apps set active=true where slug='page'; grant truncate on public.clearpage_sync_state to authenticated;"
           psql -v ON_ERROR_STOP=1 -f /tmp/clearpage-emergency-stop-synthetic.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/emergency-rollback-drift-verification.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/emergency-rollback-verification.sql
+          # Only in disposable PostgreSQL: restore normal table ACL afterwards.
+          psql -v ON_ERROR_STOP=1 -c "revoke truncate on public.clearpage_sync_state from authenticated;"
+          psql -v ON_ERROR_STOP=1 -f /tmp/clearpage-emergency-stop-synthetic.sql
 
   browser-local-first:
     # Playwright 1.56.1 does not support ubuntu-26.04; pin the supported image.
