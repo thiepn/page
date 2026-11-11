@@ -48,6 +48,10 @@ committed before cloud CAS. No realtime editing, E2EE or background sync guarant
 
 ## Operator-only activation and release gates
 
+The bounded network policy, disposable A/B acceptance procedure, strict rollback
+and redacted evidence contract are in [REAL_OAUTH_ACCEPTANCE.md](REAL_OAUTH_ACCEPTANCE.md).
+That plan is **prepared only**: no real-network test or Account activation is authorized.
+
 1. **COMPLETE:** Base Account migration `20261110000901_clearpage_optional_sync_inactive_v12`
    installed into the existing THIEPN Account project. The Account app
    `page` remains inactive with isolated RLS/CAS and no synced user rows.
@@ -104,17 +108,19 @@ canonical Account identity and may be deleted through Account lifecycle.
 
 ## Known limitations / release blockers
 
-- **CONFIRMED ACCOUNT ACL DEFECT (2026-11-11):** live PostgreSQL 17
-  `authenticated` has `TRUNCATE`, `REFERENCES`, `TRIGGER`, and `MAINTAIN`
-  on `public.clearpage_sync_state` due to Supabase default public-table grants.
-  `TRUNCATE` is not controlled by RLS. A source fix and disposable fixture
-  assertion revoke all `PUBLIC, anon, authenticated` privileges, then regrant
-  `SELECT` to `authenticated`. **The production ACL is not yet repaired.**
-  Do not activate the app or claim release readiness until an explicit reviewed
-  follow-up Account migration has narrowed live privileges, verified each
-  denied privilege, and retained the guarded CAS RPC. No production data was
-  modified by the source/CI correction. This is a DB-role overpermission,
-  not demonstrated arbitrary SQL execution from a browser.
+- **ACCOUNT ACL DEFECT REPAIRED (2026-11-11):** production PostgreSQL 17
+  previously granted `TRUNCATE`, `REFERENCES`, `TRIGGER` and `MAINTAIN`
+  to `authenticated` on `public.clearpage_sync_state`, despite RLS.
+  After explicit operator authorization, the exact reviewed SQL from
+  Account draft PR #90 `supabase/review/clearpage_sync_acl_hardening_REVIEW_ONLY.sql`
+  was executed against the existing Account project. Independent live
+  verification confirmed authenticated `SELECT` only; all direct
+  `INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN` privileges
+  denied; anonymous table privileges denied; RLS and authenticated guarded
+  CAS execution retained; app and binding inactive; zero sync rows.
+  This transaction was applied directly: **no separate migration-history
+  record** was created. This fixes a database-role overpermission, not a
+  demonstrated browser-triggered arbitrary-SQL exploit.
 - The callable `SECURITY DEFINER` guard and CAS RPC retain their intended
   authenticated EXECUTE rights, with `search_path=''` and explicit
   auth.uid/client/app/connection/grant checks; final post-activation REST
