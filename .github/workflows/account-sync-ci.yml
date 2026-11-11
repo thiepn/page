@@ -79,6 +79,15 @@ jobs:
             > /tmp/clearpage-operator-binding.sql
           psql -v ON_ERROR_STOP=1 -f /tmp/clearpage-operator-binding.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/rls-cas.sql
+          # CRITICAL: use ONLY synthetic OAuth UUID in disposable localhost PG.
+          sed 's/088b34ff-84ad-4746-a030-cc517159a17a/cccccccc-cccc-4ccc-8ccc-cccccccccccc/g' \
+            supabase/clearpage_emergency_stop_REVIEW_ONLY.sql \
+            > /tmp/clearpage-emergency-stop-synthetic.sql
+          psql -v ON_ERROR_STOP=1 -f /tmp/clearpage-emergency-stop-synthetic.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/emergency-rollback-verification.sql
+          # Repeated stop must be safe, even with preexisting cloud data.
+          psql -v ON_ERROR_STOP=1 -f /tmp/clearpage-emergency-stop-synthetic.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/emergency-rollback-verification.sql
 
   browser-local-first:
     # Playwright 1.56.1 does not support ubuntu-26.04; pin the supported image.
