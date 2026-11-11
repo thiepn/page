@@ -1,6 +1,6 @@
 # Clearpage v1.2 — controlled real OAuth acceptance (PREPARED / NOT AUTHORIZED)
 
-This document is a proposed **future operator-run test contract**, not permission to activate Account, create users, connect to real OAuth, merge or deploy. Start from Clearpage PR #1 HEAD 72d7d09e20bf333e64acd8b6cc12a4535a9a231f, Account draft PR #90 HEAD 5269d71825f86859f5073bb54ceb88d287f5f80e and the already-passing offline exact-origin Playwright test. The parent PR commits may advance through this documentation change; reverify the new exact head.
+This document is a proposed **future operator-run test contract**, not permission to activate Account, create users, connect to real OAuth, merge or deploy. Start from the live, independently verified heads of Clearpage draft PR #1 and Account draft PR #90, plus the passing offline exact-origin Playwright test. Never treat a previous SHA as current; freeze the exact build commit and reverify both PRs before any operator action.
 
 ## 1. Network boundary: two controls, not one
 
@@ -10,6 +10,28 @@ This document is a proposed **future operator-run test contract**, not permissio
 - The pure classifier presently returns **local**, **candidate-only**, or **deny** and sets LIVE_EGRESS_ENABLED=false. It deliberately does not execute network calls. Candidate issuer paths are GET /auth/v1/oauth/authorize (exact UUID and S256), POST /auth/v1/oauth/token, GET /auth/v1/user, GET /rest/v1/clearpage_sync_state (exact read), and POST /rest/v1/rpc/clearpage_sync_cas. Candidate Account paths are GET /sso/probe (bound UUID) and GET /oauth/consent (opaque authorization ID).
 - Real Account static assets, account login pages, and any upstream Google identity-provider redirects are **not qualified**. Capture only host/path/method/status in a separate human-operated, credential-free discovery procedure, then review and add narrowly required paths if justified. Never blanket-allow Account /assets/**, Supabase /rest/v1/** or *.google.com, nor copy credentials into GitHub Actions.
 - No direct Node HTTP clients, Playwright APIRequestContext, hidden additional browser contexts or Chrome extensions may evade the independently enforced egress gate. Stop on unknown path, non-allowlisted redirect, wrong callback, certificate errors, unexpected client/owner or attempted production Clearpage fallback.
+
+### Minimum independent egress containment: required but NOT provisioned
+
+The practical minimum is an **ephemeral, independently restricted network namespace/container** for Chromium and its test controller, paired with an external, tightly controlled outbound HTTPS CONNECT proxy. The container must have **default-deny outbound IPv4 and IPv6**, no route or capability to alter firewall policy, no direct DNS or raw sockets, no UDP/QUIC, and no bypass around the proxy. The proxy is the **only** permitted egress peer. It must reject CONNECT to IP literals, loopback, private, link-local, metadata and non-443 destinations; perform its own DNS resolution; validate exact allowed destination hostnames (not suffix wildcards); and never disable browser TLS certificate validation. It must reject CONNECT to page.thiepn.dev because local Playwright fulfillment is the only approved app-source path.
+
+**Unresolved:** Account's Google sign-in may require additional upstream domains and static login assets. The known host list (Account UI and Supabase issuer) is not necessarily sufficient. Qualify such destinations **without entering credentials**, using a separately authorized, isolated discovery run. Do not automatically expand the policy after observing a redirect. No wildcard Google, CDN or Account asset allowance.
+
+**Host-level containment is not path-level containment.** An HTTPS CONNECT proxy typically cannot inspect encrypted URL paths without TLS interception, which is not justified for this credentialed experiment. The inert Playwright classifier provides useful request-level checks, but a same-host HTTP redirect can bypass reclassification. This residual limitation means **an approved URL-path policy is not yet enforceable across every redirected hop**. To proceed, a human security reviewer must accept that risk or require a separate test issuer with stricter isolation. Never claim independent path-level enforcement merely because the proxy denies unknown hosts.
+
+Before activation, run and archive **aggregate-only** containment evidence, without real credentials:
+
+| Independent negative control | Required observation |
+| --- | --- |
+| Allowed synthetic request redirects to an unapproved host | The outbound proxy refuses redirected CONNECT; zero bytes reach destination |
+| Direct browser/Node socket bypass to public Internet | Kernel/container egress denies it |
+| IPv6, DNS, UDP/QUIC and WebSocket bypass | No external path exists outside the audited proxy |
+| Redirect to page.thiepn.dev | Denied by independent egress; local build remains the only Clearpage source |
+| Unknown HTTPS host, IP literal, private/metadata endpoint | Proxy denies |
+| Wrong origin, unapproved route or callback in Playwright | Browser policy rejects initial request |
+| Proxy unavailable or policy malformed | Entire run stops; no direct fallback |
+
+**No network containment test has actually been executed yet.** The preceding table is an acceptance protocol, not a claim of passing observations.
 
 ## 2. Disposable people and devices
 
@@ -43,7 +65,7 @@ Simulated CI, anonymous SQL tests, and the offline exact-origin harness do NOT p
 
 ## 5. Rollback and cleanup (proposed, not executed)
 
-Before activation, pre-review a **transactional, exact-ID, idempotent rollback** that first disables only the binding with oauth_client_id 088b34ff-84ad-4746-a030-cc517159a17a and app_slug 'page', sets automatic_identity_consent=false, then disables only account_apps.slug='page'. Assert exactly the expected rows and inactive result before commit. Do not delete the registered OAuth client or change global keys, other apps, Core, user data or database ACL.
+A **review-only exact-ID emergency deactivation transaction** now exists at supabase/clearpage_emergency_stop_REVIEW_ONLY.sql. It disables the matching binding first (including automatic_identity_consent), then the page app in one short, scoped, locking transaction and verifies RLS/CAS privileges; it does not delete users, OAuth clients, cloud rows, sessions or grants. In disposable PostgreSQL, this same SQL was exercised with a substituted **synthetic UUID** after two independent owners had created data. The test verified the held mock client token could neither SELECT nor CAS after rollback, preserved both revisions and the OAuth registry, and passed on a repeated run. The production UUID script has **never been executed on live Account** and requires separate activation-window approval. Inspect tests/sql/emergency-rollback-verification.sql and exact-head CI evidence. The emergency script uses short lock/statement timeouts, so operator access and the ability to re-run/diagnose a failed rollback remain prerequisites. Concurrent re-activation by another operator must be prevented outside this transaction. Do not delete the registered OAuth client or change global keys, other apps, Core, user data or database ACL.
 
 Then use the Account-supported disconnect/revocation route on **disposable A/B only**. Verify held tokens are denied even if their JWT has not expired; revoke only their app sessions and cleanup their identified test notes. Do not delete preexisting authorization rows en masse (the current baseline includes an OAuth authorization record without a client session). Delete disposable Auth identities only after confirming no unrelated app usage, and only with separate operator approval. Verify zero test rows, no test sessions, original client retained, restored app/binding/consent flags, repaired table privileges and unaffected v1.1 site. If rollback tooling or operator access cannot be demonstrated, **NO-GO**.
 
