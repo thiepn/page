@@ -150,6 +150,9 @@
           <button data-action="restore" role="menuitem">Restore backup</button>
           <button data-action="recovery" role="menuitem">Recover previous saves</button>
           <hr>
+          <div class="menu-label">Account &amp; sync</div>
+          <button data-action="account" id="accountMenu">THIEPN Account <kbd>Optional</kbd></button>
+          <hr>
           <button data-action="shortcuts" role="menuitem">Keyboard shortcuts</button>
           <button data-action="clear" class="danger" role="menuitem">Clear current page</button>
         </div>
@@ -163,7 +166,7 @@
     <textarea id="editor" class="editor" placeholder="Start writing…" spellcheck="true" aria-label="Write here" autocomplete="off"></textarea>
   </main>
   <footer class="footer">
-    <span class="save-status" id="saveStatus" role="status" aria-live="polite">Saved on this device</span>
+    <span class="save-status" id="saveStatus" role="status" aria-live="polite">Saved on this device</span><span class="save-status" id="cloudStatus" role="status" aria-live="polite" hidden>Cloud off</span>
     <div class="footer-right"><span id="counter">0 words · 0 characters</span><button id="footerFocus" title="Focus mode">Focus</button></div>
   </footer>
 </div>
@@ -177,7 +180,7 @@
   <div class="sidebar-tabs" role="group" aria-label="Page collections"><button id="pagesTab" aria-pressed="true">Pages</button><button id="trashTab" aria-pressed="false">Recently deleted</button></div>
   <span class="search-summary" id="searchSummary" role="status" aria-live="polite"></span>
   <div class="page-list" id="pageList"></div>
-  <div class="sidebar-foot">Stored on this device, without an account. Use <strong>Back up all pages</strong> to protect your writing from browser resets.</div>
+  <div class="sidebar-foot">Your writing is saved locally. Account sync is optional and never uploads guest pages without your explicit choice. <strong>Back up all pages</strong> regularly.</div>
 </aside>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMessage"></span><button id="toastUndo" type="button" hidden>Undo</button></div>
 <div class="dialog-backdrop" id="dialogBackdrop" aria-hidden="true">
@@ -193,6 +196,21 @@
     <div class="dialog-actions"><button id="recoveryCancel">Cancel</button><button id="recoveryConfirm" class="primary">Recover page</button></div>
   </div>
 </div>
+<div class="dialog-backdrop" id="accountBackdrop" aria-hidden="true">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+    <h2 id="accountTitle">THIEPN Account</h2>
+    <p id="accountMessage">Writing works without an account. Cloud sync is optional.</p>
+    <p id="accountNotice" style="font-size:12px;line-height:1.5">Notes stay on this device until you explicitly enable cloud sync. Guest pages are never uploaded automatically.</p>
+    <div class="dialog-actions" style="flex-wrap:wrap;gap:8px">
+      <button id="accountConnect" class="primary">Continue with THIEPN</button>
+      <button id="accountEnable" hidden>Enable cloud sync</button>
+      <button id="accountSync" hidden>Sync now</button>
+      <button id="accountCopyGuest" hidden>Copy guest pages</button>
+      <button id="accountSignOut" hidden>Use guest pages</button>
+      <button id="accountClose">Close</button>
+    </div>
+  </div>
+</div>
 <div id="printArea" style="display:none"><h1 id="printTitle"></h1><div class="print-text" id="printText"></div></div>
 <input type="file" id="importFile" accept=".txt,.md,text/plain,text/markdown" hidden>
 <input type="file" id="restoreFile" accept=".json,application/json" hidden>
@@ -204,6 +222,9 @@
   const DRAFT_KEY = 'clearpage.emergency.v2';
   const PREF_KEY = 'clearpage.preferences.v1';
   const DB_NAME = 'clearpage.data.v2';
+  let currentScope='';
+  const fallbackKey=()=>FALLBACK_KEY+currentScope;
+  const draftKey=()=>DRAFT_KEY+currentScope;
   const STORE = 'snapshots';
   const MAX_PAGES = 5000;
   const MAX_TEXT = 5000000;
@@ -241,7 +262,7 @@
     return new Promise((resolve,reject)=>{
       if(typeof indexedDB === 'undefined') {reject(Error('IndexedDB unavailable'));return;}
       let req;
-      try { req=indexedDB.open(DB_NAME,1); } catch(e){reject(e);return;}
+      try { req=indexedDB.open(DB_NAME+currentScope,1); } catch(e){reject(e);return;}
       req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(STORE))req.result.createObjectStore(STORE,{keyPath:'key'});};
       req.onsuccess=()=>resolve(req.result);
       req.onerror=()=>reject(req.error||Error('Cannot open IndexedDB'));
@@ -302,16 +323,17 @@
   function setStatus(message, error=false) { status.textContent=message; status.dataset.error=String(error); }
   function storageFailure(e) {
     const conflict=e?.code==='CONFLICT';
-    if(conflict)storageBlocked=true;
+    // Never switch workspaces after any failed local commit.
+    storageBlocked=true;
     setStatus(conflict?'Other tab changed data — export a backup':'Not saved — export a backup',true);
     if(conflict)showToast('Another tab changed your saved data. Export a backup.');
   }
   function clearJournalIfSaved(snapshot) {
     try {
-      const draft=getJSON(DRAFT_KEY);
+      const draft=getJSON(draftKey());
       if(!draft)return;
       const n=[...snapshot.notes,...snapshot.trash].find(n=>n.id===draft.id);
-      if(n && n.title===draft.title && n.text===draft.text) localStorage.removeItem(DRAFT_KEY);
+      if(n && n.title===draft.title && n.text===draft.text) localStorage.removeItem(draftKey());
     } catch {}
   }
   function journalDraft() {
@@ -319,10 +341,10 @@
     // A small synchronous emergency draft bridges the debounce / tab-close window.
     // Oversized drafts must rely on IDB commits rather than exhausting localStorage.
     if(!n || editor.value.length>250000)return;
-    try { localStorage.setItem(DRAFT_KEY,JSON.stringify({id:n.id,title:title.value,text:editor.value,at:Date.now()})); } catch {}
+    try { localStorage.setItem(draftKey(),JSON.stringify({id:n.id,title:title.value,text:editor.value,at:Date.now()})); } catch {}
   }
   function mergeEmergencyDraft(snapshotSavedAt) {
-    const draft=getJSON(DRAFT_KEY);
+    const draft=getJSON(draftKey());
     if(!draft || typeof draft.id!=='string' || typeof draft.title!=='string' || typeof draft.text!=='string' || draft.text.length>250000 || draft.title.length>160 || !Number.isFinite(draft.at))return false;
     if(draft.at<=Date.parse(snapshotSavedAt||0) || draft.at>Date.now()+60000)return false;
     const n=model.notes.find(n=>n.id===draft.id);
@@ -350,14 +372,18 @@
         revision=next;
         clearJournalIfSaved(snapshot);
         if(seq===saveRequest)setStatus('Saved on this device');
+        window.dispatchEvent(new Event('clearpage:saved'));
+
       }).catch(e=>{storageFailure(e);});
       return writeQueue;
     }
     if(storageMode==='fallback') {
       try {
-        localStorage.setItem(FALLBACK_KEY,serialized);
+        localStorage.setItem(fallbackKey(),serialized);
         clearJournalIfSaved(snapshot);
         setStatus('Saved (limited browser storage)');
+        window.dispatchEvent(new Event('clearpage:saved'));
+
       } catch(e){storageFailure(e);}
       return Promise.resolve();
     }
@@ -367,7 +393,7 @@
   function save(options={}) {readEditor();return persistModel(options);}
   function scheduleSave() { readEditor();journalDraft();setStatus('Saving…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>{void persistModel();},320); }
   async function initStorage() {
-    let legacy=normalize(getJSON(FALLBACK_KEY)) || normalize(getJSON(LEGACY_KEY));
+    let legacy=normalize(getJSON(fallbackKey())) || (currentScope ? null : normalize(getJSON(LEGACY_KEY)));
     try {
       db=await openDatabase();
       db.onversionchange=()=>{db.close();storageBlocked=true;setStatus('Storage changed — export a backup',true);};
@@ -405,7 +431,7 @@
       // Don't claim IndexedDB safety when the browser only offers localStorage.
       if(mergeEmergencyDraft(''))showToast('Recovered a draft from local storage');
       persistModel();
-      if(!getJSON(FALLBACK_KEY))setStatus('Limited browser storage — download backups',true);
+      if(!getJSON(fallbackKey()))setStatus('Limited browser storage — download backups',true);
     }
   }
   async function init() {
@@ -582,6 +608,7 @@
     case 'markdown':downloadText('md');break;
     case 'print':printPage();break;
     case 'backup':backup();break;
+    case 'account':window.dispatchEvent(new Event('clearpage:account-open'));break;
     case 'restore':$('restoreFile').click();break;
     case 'recovery':void openRecovery();break;
     case 'shortcuts':confirmBox('Keyboard shortcuts','Ctrl / Cmd + K: find a page · Up / Down + Enter: select · Ctrl / Cmd + Alt + Left / Right: previous / next page · Ctrl / Cmd + Alt + N: new page · Ctrl / Cmd + S: download text · Ctrl / Cmd + Shift + F: focus mode · Esc: close or leave focus.','Close',()=>{});break;
@@ -623,10 +650,12 @@
     $('dialogBackdrop').addEventListener('click',e=>{if(e.target===$('dialogBackdrop'))closeDialog();});
     $('recoverySnapshot').addEventListener('change',fillRecoveryPages);$('recoveryCancel').addEventListener('click',closeRecovery);$('recoveryConfirm').addEventListener('click',recoverSelected);
     $('recoveryBackdrop').addEventListener('click',e=>{if(e.target===$('recoveryBackdrop'))closeRecovery();});
+    $('accountBackdrop').addEventListener('click',e=>{if(e.target===$('accountBackdrop'))$('accountClose').click();});
     document.addEventListener('pointerdown',e=>{if(!$('moreMenu').contains(e.target)&&!$('menuButton').contains(e.target))closeMenu();});
     document.addEventListener('keydown',e=>{
       if(e.key==='Escape'){
-        if($('recoveryBackdrop').classList.contains('open'))closeRecovery();
+        if($('accountBackdrop').classList.contains('open')){$('accountClose').click();}
+        else if($('recoveryBackdrop').classList.contains('open'))closeRecovery();
         else if($('dialogBackdrop').classList.contains('open'))closeDialog();
         else if($('sidebar').classList.contains('open')){closeSidebar();editor.focus({preventScroll:true});}
         else if($('moreMenu').classList.contains('open'))closeMenu();
@@ -644,8 +673,100 @@
     });
     window.addEventListener('beforeprint',()=>{$('printTitle').textContent=current().title.trim();$('printTitle').style.display=current().title.trim()?'block':'none';$('printText').textContent=editor.value;});
   }
-  void init().catch(()=>{model=model||freshModel();storageMode='readonly';loadPage();wire();setStatus('App could not load saved data — export a backup',true);});
+  function idbRow(key){
+    return new Promise((resolve,reject)=>{
+      if(!db||storageMode!=='idb'){resolve(null);return;}
+      const req=db.transaction(STORE,'readonly').objectStore(STORE).get(key);
+      req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error);
+    });
+  }
+  function setIdbRow(key,value) {
+    return new Promise((resolve,reject)=>{
+      if(!db||storageMode!=='idb'){reject(Error('IndexedDB required for account sync'));return;}
+      const tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).put({key,...value});
+      tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Transaction aborted'));
+    });
+  }
+  // Serialize all workspace changes. Identity A→B→guest notifications may
+  // arrive while an earlier IDB save/open is still pending; without a queue,
+  // a later request can return early against the old scope and the stale A
+  // request can subsequently display private notes under guest identity.
+  let workspaceSwitchQueue=Promise.resolve();
+  function switchWorkspace(id) {
+    if(id!==null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return Promise.reject(Error('Invalid account identity'));
+    const operation=workspaceSwitchQueue.catch(()=>{}).then(()=>doSwitchWorkspace(id));
+    workspaceSwitchQueue=operation;
+    return operation;
+  }
+  async function doSwitchWorkspace(id) {
+    const next=id?':account:'+id:'';
+    if(next===currentScope)return;
+    await save();await writeQueue;
+    if(storageBlocked)throw Error('Current writing is not safely saved; export a backup before switching');
+    if(db)db.close();
+    db=null;currentScope=next;model=null;revision=0;saveRequest=0;storageBlocked=false;storageMode='loading';writeQueue=Promise.resolve();
+    await initStorage();
+    if(!model||storageMode==='readonly')throw Error('Account workspace could not be safely opened');
+    loadPage();
+  }
+  async function guestSnapshot() {
+    if(!currentScope)return structuredClone(model);
+    let guest=null;
+    try {
+      const database=await new Promise((resolve,reject)=>{
+        const r=indexedDB.open(DB_NAME,1);
+        r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
+        r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE,{keyPath:'key'});};
+      });
+      guest=await new Promise((resolve,reject)=>{
+        const req=database.transaction(STORE,'readonly').objectStore(STORE).get('current');
+        req.onsuccess=()=>resolve(unpack(req.result)?.data||null);req.onerror=()=>reject(req.error);
+      });
+      database.close();
+    }catch{}
+    return guest||normalize(getJSON(FALLBACK_KEY))||normalize(getJSON(LEGACY_KEY));
+  }
+  async function copyGuestPages() {
+    if(!currentScope)throw Error('Connect a THIEPN Account first');
+    const guest=await guestSnapshot();
+    if(!guest)throw Error('No guest pages found');
+    await save();
+    const meaningful=n=>n.title.trim()||n.text.trim();
+    const copies=guest.notes.filter(meaningful),deleted=guest.trash.filter(meaningful);
+    if(model.notes.length+copies.length>MAX_PAGES||model.trash.length+deleted.length>MAX_PAGES)throw Error('Too many pages to copy');
+    if(!copies.length&&!deleted.length)return 0;
+    const now=new Date().toISOString();
+    for(const src of copies)model.notes.push({...src,id:makeId(),createdAt:now,updatedAt:now});
+    for(const src of deleted)model.trash.push({...src,id:makeId(),deletedAt:now});
+    await persistModel({safety:true});loadPage();return copies.length+deleted.length;
+  }
+  const waitForLocal=()=>new Promise(resolve=>{
+    if(storageMode==='idb'&&!storageBlocked){resolve(true);return;}
+    resolve(false);
+  });
+  window.clearpageBridge=Object.freeze({
+    ready:()=>Boolean(model),
+    snapshot:()=>{readEditor();return structuredClone(model);},
+    flush:async()=>{await save();await writeQueue;if(storageBlocked||storageMode!=='idb')throw Error('Saved storage not available for sync');},
+    scope:()=>currentScope,
+    switchWorkspace,
+    applySnapshot:async next=>{
+      const normalized=normalize(next);if(!normalized)throw Error('Invalid cloud snapshot');
+      readEditor();
+      model=normalized;
+      await persistModel({safety:true});
+      if(storageBlocked)throw Error('Cloud copy could not be saved locally');
+      loadPage();
+    },
+    readBaseline:async()=>{const rec=await idbRow('cloud-meta');return rec?.value||null;},
+    writeBaseline:async value=>setIdbRow('cloud-meta',{value}),
+    copyGuestPages,
+    storageReady:waitForLocal,
+    notify:message=>showToast(message)
+  });
+  window.clearpageReady=init().catch(()=>{model=model||freshModel();storageMode='readonly';loadPage();wire();setStatus('App could not load saved data — export a backup',true);});
 })();
 </script>
+<script type="module" src="/js/account-sync.js"></script>
 </body>
 </html>
