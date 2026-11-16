@@ -128,7 +128,8 @@
   .history-pane h3 { margin:0; padding:11px 12px; font-size:12px; font-weight:600; border-bottom:1px solid var(--line); }
   .history-body { height:clamp(180px,34vh,360px); overflow:auto; padding:10px 12px; }
   .history-body pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; }
-  .history-body .changed-line { background:var(--hover); border-radius:3px; display:block; }
+  .history-body .history-line { display:block; }
+  .history-body .changed-line { background:var(--hover); border-radius:3px; }
   .history-info { color:var(--muted); font-size:12px; line-height:1.5; margin:0; }
   .dialog { max-height:calc(100dvh - 32px); overflow-y:auto; }
   body.focus .find-bar { top:14px; }
@@ -774,7 +775,7 @@
     return hits;
   }
   function openFind(replace=false){
-    closeMenu();$('findBar').hidden=false;$('findButton').setAttribute('aria-expanded','true');
+    closeMenu();closeSidebar();$('findBar').hidden=false;$('findButton').setAttribute('aria-expanded','true');
     const input=$('findQuery');
     if(!input.value && editor.selectionEnd>editor.selectionStart && editor.selectionEnd-editor.selectionStart<=100){
       input.value=editor.value.slice(editor.selectionStart,editor.selectionEnd);
@@ -807,9 +808,17 @@
     const hits=refreshFind();if(!hits.length)return;
     const start=editor.selectionStart,end=editor.selectionEnd;
     const match=hits.find(h=>h.start===start&&h.end===end)||hits.find(h=>h.start>=start)||hits[0];
+    const noteId=current().id,before=editor.value;
     editor.setRangeText($('replaceQuery').value,match.start,match.end,'end');
+    const after=editor.value;
     editor.dispatchEvent(new Event('input',{bubbles:true}));
     if(findHits().length)nextFind();else {refreshFind();editor.focus({preventScroll:true});requestCaretFollow();}
+    showToast('Replaced one match',{label:'Undo',action:()=>{
+      if(current().id!==noteId||editor.value!==after){showToast('Page changed — consult version history');return;}
+      editor.value=before;editor.setSelectionRange(match.start,match.end);
+      editor.dispatchEvent(new Event('input',{bubbles:true}));
+      refreshFind();editor.focus({preventScroll:true});requestCaretFollow();
+    }});
   }
   function replaceEvery(){
     const hits=refreshFind();if(!hits.length)return;
@@ -838,8 +847,8 @@
       container.replaceChildren();
       const values=new Set(other);
       for(const line of lines){
-        const span=document.createElement('span');span.textContent=line+'\n';
-        if(!values.has(line))span.className='changed-line';
+        const span=document.createElement('span');span.textContent=line||' ';
+        span.className='history-line'+(values.has(line)?'':' changed-line');
         container.append(span);
       }
       if(lines.length>=170)container.append(document.createTextNode('\n… preview limited to 170 lines'));
