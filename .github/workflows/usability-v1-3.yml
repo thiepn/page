@@ -1,0 +1,37 @@
+name: Clearpage v1.3 usability browser acceptance
+on:
+  pull_request:
+    paths:
+      - index.html
+      - tests/usability-browser.mjs
+      - manifest.webmanifest
+      - icon.svg
+      - sw.js
+      - .github/workflows/usability-v1-3.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Browser prerequisites
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium firefox
+      - name: Verify inline JavaScript parses
+        run: |
+          node -e "const s=require('fs').readFileSync('index.html','utf8');require('fs').writeFileSync('/tmp/clearpage-script.js',s.match(/<script>([\s\S]*?)<\/script>/)[1]);"
+          node --check /tmp/clearpage-script.js
+          node --check sw.js
+      - name: Run existing scrolling regression
+        run: node tests/editor-scroll.mjs
+      - name: Run v1.3 browser usability and offline regression
+        run: node tests/usability-browser.mjs
