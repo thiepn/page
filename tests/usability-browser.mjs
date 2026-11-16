@@ -109,6 +109,32 @@ async function scenario(engine,name,viewport,mobile=false){
     assert.equal(await page.locator('.page-item-main').count(),1,'pins survive reload');
     await page.locator('#closePages').click();
 
+    // Long writing: manual scroll shows a return affordance, and switching
+    // away/back preserves a resumable caret without hijacking initial viewport.
+    await page.locator('#openPages').click();
+    await page.locator('#sidebarNew').click();
+    await page.locator('#pageTitle').fill('Long writing resume target');
+    const longText=Array.from({length:65},(_,i)=>'Line '+i+': Continuing the same long document should stay practical.').join('\n');
+    await saveText(page,longText);
+    await page.waitForTimeout(100);
+    const writingY=await page.evaluate(()=>window.scrollY);
+    assert.ok(writingY>500,name+': typing long note follows cursor');
+    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+    await page.waitForTimeout(120);
+    assert.equal(await page.locator('#resumeWriting').isVisible(),true,name+': manual reading offers return to writing');
+    await page.locator('#resumeWriting').click();
+    await page.waitForTimeout(100);
+    assert.ok((await page.evaluate(()=>window.scrollY))>500,name+': resume scrolls to the saved cursor');
+    await page.locator('#openPages').click();
+    await page.locator('#sidebarNew').click();
+    await page.locator('#openPages').click();
+    await page.locator('.page-item').filter({hasText:'Long writing resume target'}).first().locator('.page-item-main').click();
+    assert.ok((await page.evaluate(()=>window.scrollY))<5,name+': returning page initially opens at top');
+    assert.equal(await page.locator('#resumeWriting').isVisible(),true,name+': last cursor remains resumable');
+    await page.locator('#resumeWriting').click();
+    await page.waitForTimeout(100);
+    assert.ok((await page.evaluate(()=>window.scrollY))>500,name+': resumed cursor returns to writing position');
+
     // Mobile navigation must not overflow the width or obscure controls.
     if(mobile){
       const dims=await page.evaluate(()=>({inner:innerWidth,scroll:document.documentElement.scrollWidth}));
