@@ -541,6 +541,7 @@
     document.title=(n.title.trim()||'Untitled')+' — Clearpage';
     adjustHeight({force:true});editor.scrollTop=0;updateCount();markOpened(n.id);renderPages();
     lastFollowScrollY=0;updateResumeButton(true);
+    if(!$('findBar').hidden)refreshFind();
     // Switching notes must never inherit the previous note's long-page position.
     window.scrollTo({top:0,behavior:'auto'});
   }
@@ -852,6 +853,7 @@
   }
 
   async function openRecovery(){
+    closeFind();readEditor();
     if(!db || storageMode!=='idb'){showToast('Recovery snapshots unavailable; import a JSON backup');return;}
     try{
       const rows=await allRows();const valid=rows.map(unpack).filter(Boolean).filter(x=>x.key!=='current');
@@ -867,6 +869,7 @@
     const choice=$('recoveryPage');choice.replaceChildren();
     const options=[...version.data.notes.map(n=>({n,deleted:false})),...version.data.trash.map(n=>({n,deleted:true}))];
     for(let i=0;i<options.length;i++){const o=document.createElement('option');o.value=String(i);o.textContent=(options[i].deleted?'Deleted: ':'')+pageName(options[i].n);choice.append(o);}
+    renderHistoryPreview();
   }
   function closeRecovery(){$('recoveryBackdrop').classList.remove('open');$('recoveryBackdrop').setAttribute('aria-hidden','true');editor.focus({preventScroll:true});}
   function recoverSelected(){
@@ -881,13 +884,17 @@
     case 'theme':preferences.theme=preferences.theme==='dark'?'light':'dark';applyPreferences();savePrefs();break;
     case 'font':preferences.font=({serif:'sans',sans:'mono',mono:'serif'})[preferences.font];applyPreferences();savePrefs();break;
     case 'size':preferences.size=({small:'medium',medium:'large',large:'small'})[preferences.size];applyPreferences();savePrefs();break;
+    case 'find':openFind();break;
+    case 'history':void openRecovery();break;
+    case 'copy':void copyText();break;
+    case 'download':downloadText('txt');break;
     case 'import':$('importFile').click();break;
     case 'markdown':downloadText('md');break;
     case 'print':printPage();break;
     case 'backup':backup();break;
     case 'restore':$('restoreFile').click();break;
     case 'recovery':void openRecovery();break;
-    case 'shortcuts':confirmBox('Keyboard shortcuts','Ctrl / Cmd + K: find a page · Up / Down + Enter: select · Ctrl / Cmd + Alt + Left / Right: previous / next page · Ctrl / Cmd + Alt + N: new page · Ctrl / Cmd + S: download text · Ctrl / Cmd + Shift + F: focus mode · Esc: close or leave focus.','Close',()=>{});break;
+    case 'shortcuts':confirmBox('Keyboard shortcuts','Ctrl / Cmd + F: find within page · Ctrl / Cmd + H: replace text · Enter / Shift+Enter: next / previous match · Ctrl / Cmd + K: find pages · Ctrl / Cmd + Alt + Left / Right: switch pages · Ctrl / Cmd + Alt + N: new page · Ctrl / Cmd + S: download text · Ctrl / Cmd + Shift + F: focus mode · Esc: close overlays.','Close',()=>{});break;
     case 'clear':confirmBox('Clear this page?','The title stays. The prior text can be recovered with Undo or from an automatic snapshot.','Clear text',async()=>{
       const old=editor.value, pageId=current().id;if(!old)return;
       await save(); // Preserve the latest text before the destructive operation.
@@ -906,6 +913,7 @@
       const shrank=editor.value.length<previousEditorLength;
       previousEditorLength=editor.value.length;
       scheduleSave();updateCount();adjustHeight({force:shrank});rememberCursor();
+      if(!$('findBar').hidden)refreshFind();
       if(!composing)requestCaretFollow();
     });
     editor.addEventListener('compositionstart',()=>{composing=true;});
@@ -944,6 +952,17 @@
     $('resumeWriting').addEventListener('click',resumeWriting);
     window.addEventListener('pagehide',()=>{rememberCursor();readEditor();journalDraft();void persistModel();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){readEditor();journalDraft();void persistModel();}});
+    $('findButton').addEventListener('click',()=>$('findBar').hidden?openFind():closeFind());
+    $('findClose').addEventListener('click',closeFind);
+    $('findQuery').addEventListener('input',refreshFind);
+    $('findQuery').addEventListener('keydown',e=>{
+      if(e.key==='Enter'){e.preventDefault();nextFind(e.shiftKey?-1:1);}
+    });
+    $('findPrevious').addEventListener('click',()=>nextFind(-1));
+    $('findNext').addEventListener('click',()=>nextFind(1));
+    $('replaceOne').addEventListener('click',replaceCurrent);
+    $('replaceAll').addEventListener('click',replaceEvery);
+    $('historyButton').addEventListener('click',()=>{void openRecovery();});
     $('openPages').addEventListener('click',toggleSidebar);$('closePages').addEventListener('click',closeSidebar);$('overlay').addEventListener('click',closeSidebar);
     $('pagesTab').addEventListener('click',()=>changeView('pages'));$('pinnedTab').addEventListener('click',()=>changeView('pinned'));$('recentTab').addEventListener('click',()=>changeView('recent'));$('trashTab').addEventListener('click',()=>changeView('trash'));
     $('newButton').addEventListener('click',addPage);$('sidebarNew').addEventListener('click',addPage);
@@ -960,13 +979,14 @@
     $('cancelDialog').addEventListener('click',closeDialog);
     $('confirmDialog').addEventListener('click',()=>{const action=dialogAction;closeDialog();if(action)action();});
     $('dialogBackdrop').addEventListener('click',e=>{if(e.target===$('dialogBackdrop'))closeDialog();});
-    $('recoverySnapshot').addEventListener('change',fillRecoveryPages);$('recoveryCancel').addEventListener('click',closeRecovery);$('recoveryConfirm').addEventListener('click',recoverSelected);
+    $('recoverySnapshot').addEventListener('change',fillRecoveryPages);$('recoveryPage').addEventListener('change',renderHistoryPreview);$('recoveryCancel').addEventListener('click',closeRecovery);$('recoveryConfirm').addEventListener('click',recoverSelected);
     $('recoveryBackdrop').addEventListener('click',e=>{if(e.target===$('recoveryBackdrop'))closeRecovery();});
     document.addEventListener('pointerdown',e=>{if(!$('moreMenu').contains(e.target)&&!$('menuButton').contains(e.target))closeMenu();});
     document.addEventListener('keydown',e=>{
       if(e.key==='Escape'){
         if($('recoveryBackdrop').classList.contains('open'))closeRecovery();
         else if($('dialogBackdrop').classList.contains('open'))closeDialog();
+        else if(!$('findBar').hidden)closeFind();
         else if($('sidebar').classList.contains('open')){closeSidebar();editor.focus({preventScroll:true});}
         else if($('moreMenu').classList.contains('open'))closeMenu();
         else if(document.body.classList.contains('focus'))toggleFocus(false);
@@ -974,7 +994,9 @@
       }
       if($('dialogBackdrop').classList.contains('open')||$('recoveryBackdrop').classList.contains('open'))return;
       const mod=e.metaKey||e.ctrlKey, key=e.key.toLowerCase();
-      if(mod && !e.altKey && !e.shiftKey && key==='k'){e.preventDefault();sidebarView='pages';selectedIndex=0;openSidebar();}
+      if(mod && !e.altKey && !e.shiftKey && key==='f'){e.preventDefault();openFind();}
+      else if(mod && !e.altKey && key==='h'){e.preventDefault();openFind(true);}
+      else if(mod && !e.altKey && !e.shiftKey && key==='k'){e.preventDefault();sidebarView='pages';selectedIndex=0;openSidebar();}
       else if(mod && !e.altKey && !e.shiftKey && key==='s'){e.preventDefault();downloadText('txt');}
       else if(mod && e.altKey && key==='n'){e.preventDefault();addPage();}
       else if(mod && e.altKey && e.key==='ArrowLeft'){e.preventDefault();cyclePage(1);}
