@@ -29,11 +29,11 @@
   .icon-btn:hover, .text-btn:hover { color: var(--ink); background: var(--hover); }
   .icon-btn svg { height: 18px; width: 18px; stroke-width: 1.7; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
   .toolbar-divider { width: 1px; height: 21px; background: var(--line); margin: 0 10px; }
-  .page { width: min(100% - 52px, var(--editor-width)); margin: clamp(65px, 11vh, 130px) auto 92px; flex: 1; position: relative; }
+  .page { width: min(100% - 52px, var(--editor-width)); margin: clamp(65px, 11vh, 130px) auto 92px; flex: 1; position: relative; overflow-anchor: none; }
   .page-title { border: none; background: transparent; padding: 0; color: var(--ink); font: 500 clamp(30px, 3.5vw, 42px)/1.25 Georgia, 'Times New Roman', serif; letter-spacing: -.035em; width: 100%; min-width: 0; margin: 0 0 34px; text-overflow: ellipsis; }
   .page-title::placeholder { color: var(--muted); opacity: .48; }
   .page-title:focus { outline: none; }
-  .editor { display: block; width: 100%; min-height: 52vh; height: auto; resize: none; overflow: hidden; background: transparent; border: 0; outline: none; padding: 0 0 45px; color: var(--ink); font: 400 var(--editor-size)/1.82 var(--editor-font); letter-spacing: -.007em; caret-color: var(--accent); tab-size: 2; }
+  .editor { display: block; width: 100%; min-height: 52vh; height: auto; resize: none; overflow: hidden; overflow-anchor: none; background: transparent; border: 0; outline: none; padding: 0 0 45px; color: var(--ink); font: 400 var(--editor-size)/1.82 var(--editor-font); letter-spacing: -.007em; caret-color: var(--accent); tab-size: 2; }
   .editor:focus-visible { outline: none; }
   .editor::placeholder { color: var(--muted); opacity: .58; }
   .footer { min-height: 54px; padding: 12px clamp(24px, 4.6vw, 74px) 16px; color: var(--muted); font-size: 11px; letter-spacing: .035em; display:flex; align-items:center; justify-content:space-between; gap:12px; position: fixed; bottom:0; left:0; right:0; background: linear-gradient(transparent, var(--bg) 25%); z-index:6; pointer-events:none; }
@@ -213,6 +213,8 @@
   let saveTimer = null, toastTimer = null, toastAction = null, dialogAction = null;
   let writeQueue = Promise.resolve(), saveRequest = 0, storageBlocked = false;
   let sidebarView = 'pages', selectedIndex = 0, visibleIds = [], recoveryVersions = [];
+  let previousEditorLength = 0, lastViewportWidth = window.innerWidth;
+  let followFrame = 0, composing = false;
 
   const makeId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const emptyNote = () => ({id:makeId(), title:'', text:'', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
@@ -421,8 +423,11 @@
   function pageName(n){return n.title.trim() || n.text.trim().split('\n')[0].slice(0,45) || 'Untitled';}
   function loadPage() {
     const n=current();title.value=n.title;editor.value=n.text;
+    previousEditorLength=n.text.length;
     document.title=(n.title.trim()||'Untitled')+' — Clearpage';
-    adjustHeight();updateCount();renderPages();
+    adjustHeight({force:true});editor.scrollTop=0;updateCount();renderPages();
+    // Switching notes must never inherit the previous note's long-page position.
+    window.scrollTo({top:0,behavior:'auto'});
   }
   function savePrefs(){try{localStorage.setItem(PREF_KEY,JSON.stringify(preferences));}catch{showToast('Appearance settings could not be saved');}}
   function wordCount(text) {
@@ -433,7 +438,64 @@
     return (text.match(/\S+/g)||[]).length;
   }
   function updateCount(){const words=wordCount(editor.value),chars=Array.from(editor.value).length;$('counter').textContent=`${words.toLocaleString()} ${words===1?'word':'words'} · ${chars.toLocaleString()} ${chars===1?'character':'characters'}`;}
-  function adjustHeight(){editor.style.height='auto';editor.style.height=Math.max(window.innerHeight*.52,editor.scrollHeight+16)+'px';}
+  function adjustHeight({force=false}={}) {
+    // Never collapse a growing textarea on each keystroke: that triggers scroll
+    // anchoring, moves the document, and can hide the native insertion point.
+    if(force)editor.style.height='auto';
+    if(force || editor.scrollHeight>editor.clientHeight+2){
+      editor.style.height=Math.max(Math.ceil(window.innerHeight*.52),editor.scrollHeight+2)+'px';
+    }
+    if(editor.scrollHeight<=editor.clientHeight+2)editor.scrollTop=0;
+  }
+  function caretLinePosition() {
+    const style=getComputedStyle(editor);
+    const lineHeight=parseFloat(style.lineHeight)||40;
+    // For very large notes, avoid building a multi-megabyte layout mirror on
+    // every keystroke. The last line has a known position in an expanded field.
+    if(editor.selectionStart>180000){
+      if(editor.selectionStart!==editor.value.length)return null;
+      return {top:editor.getBoundingClientRect().bottom-(parseFloat(style.paddingBottom)||0)-lineHeight,height:lineHeight};
+    }
+    const mirror=document.createElement('div');
+    Object.assign(mirror.style,{
+      position:'fixed',top:'0',left:'-100000px',width:editor.getBoundingClientRect().width+'px',
+      boxSizing:'border-box',visibility:'hidden',pointerEvents:'none',
+      whiteSpace:'pre-wrap',overflowWrap:'break-word',wordBreak:'normal',
+      font:style.font,lineHeight:style.lineHeight,letterSpacing:style.letterSpacing,
+      padding:style.padding,tabSize:style.tabSize,textIndent:style.textIndent,
+      textAlign:style.textAlign,direction:style.direction
+    });
+    mirror.append(document.createTextNode(editor.value.slice(0,editor.selectionStart)));
+    const marker=document.createElement('span');
+    marker.textContent='\u200b';
+    mirror.append(marker);
+    document.body.append(mirror);
+    const top=editor.getBoundingClientRect().top+
+      marker.getBoundingClientRect().top-mirror.getBoundingClientRect().top-editor.scrollTop;
+    mirror.remove();
+    return {top,height:lineHeight};
+  }
+  function keepCaretVisible() {
+    followFrame=0;
+    if(document.activeElement!==editor || editor.selectionStart!==editor.selectionEnd)return;
+    const caret=caretLinePosition();
+    if(!caret)return;
+    const viewport=window.visualViewport;
+    const visibleTop=viewport?viewport.offsetTop:0;
+    const visibleBottom=visibleTop+(viewport?viewport.height:window.innerHeight);
+    // Leave room for the fixed status footer and the mobile keyboard.
+    const safeTop=visibleTop+28;
+    const safeBottom=visibleBottom-(document.body.classList.contains('focus')?34:82);
+    if(caret.top+caret.height>safeBottom){
+      window.scrollBy({top:Math.ceil(caret.top+caret.height-safeBottom),behavior:'auto'});
+    }else if(caret.top<safeTop){
+      window.scrollBy({top:Math.floor(caret.top-safeTop),behavior:'auto'});
+    }
+  }
+  function requestCaretFollow(){
+    if(followFrame)cancelAnimationFrame(followFrame);
+    followFrame=requestAnimationFrame(keepCaretVisible);
+  }
   function niceDate(iso){const time=Date.parse(iso);return Number.isNaN(time)?'':new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(time);}
   function snippetFor(n, term) {
     const text=n.text.replace(/\s+/g,' ').trim();if(!text)return '';
@@ -510,7 +572,7 @@
   function toggleSidebar(){$('sidebar').classList.contains('open')?closeSidebar():openSidebar();}
   function toggleMenu(){const menu=$('moreMenu'),next=!menu.classList.contains('open');menu.classList.toggle('open',next);$('menuButton').setAttribute('aria-expanded',String(next));}
   function closeMenu(){$('moreMenu').classList.remove('open');$('menuButton').setAttribute('aria-expanded','false');}
-  function toggleFocus(force){const focused=typeof force==='boolean'?force:!document.body.classList.contains('focus');document.body.classList.toggle('focus',focused);if(focused){closeMenu();closeSidebar();}editor.focus({preventScroll:true});}
+  function toggleFocus(force){const focused=typeof force==='boolean'?force:!document.body.classList.contains('focus');document.body.classList.toggle('focus',focused);if(focused){closeMenu();closeSidebar();}editor.focus({preventScroll:true});requestCaretFollow();}
   function applyPreferences(){
     document.documentElement.dataset.theme=preferences.theme;document.querySelector('meta[name="theme-color"]').content=preferences.theme==='dark'?'#20211f':'#f9f8f5';
     const fonts={serif:"Georgia, 'Times New Roman', serif",sans:"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",mono:"'SFMono-Regular', Consolas, 'Liberation Mono', monospace"};
@@ -520,7 +582,7 @@
     themeButton.firstChild.textContent=`Switch to ${preferences.theme==='dark'?'light':'dark'} mode `;
     fontButton.firstChild.textContent=`Font: ${preferences.font[0].toUpperCase()+preferences.font.slice(1)} `;
     sizeButton.firstChild.textContent=`Text size: ${preferences.size[0].toUpperCase()+preferences.size.slice(1)} `;
-    if(editor)adjustHeight();
+    if(editor)adjustHeight({force:true});
   }
   function safeFilename(){return (current().title.trim()||'Untitled').replace(/[\\/:*?"<>|\u0000-\u001F]+/g,'-').trim().slice(0,80)||'Untitled';}
   function download(filename,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
@@ -589,20 +651,47 @@
       const old=editor.value, pageId=current().id;if(!old)return;
       await save(); // Preserve the latest text before the destructive operation.
       if(current().id!==pageId || editor.value!==old){showToast('Text changed — clear canceled');return;}
-      editor.value='';scheduleSave();adjustHeight();updateCount();void persistModel({safety:true});
+      editor.value='';previousEditorLength=0;scheduleSave();adjustHeight({force:true});updateCount();void persistModel({safety:true});
       showToast('Page cleared',{label:'Undo',action:()=>{
         if(!model.notes.some(n=>n.id===pageId)){showToast('Page no longer available — check Recently deleted');return;}
         if(current().id!==pageId)switchPage(pageId);
-        editor.value=old;scheduleSave();adjustHeight();updateCount();editor.focus();
+        editor.value=old;previousEditorLength=old.length;scheduleSave();adjustHeight({force:true});updateCount();editor.focus();requestCaretFollow();
       }});
     });break;
   }}
   async function copyText(){try{await navigator.clipboard.writeText(editor.value);showToast('Copied to clipboard');}catch{editor.focus();editor.select();try{const ok=document.execCommand('copy');showToast(ok?'Copied to clipboard':'Select text and copy');}catch{showToast('Select text and copy');}}}
   function wire(){
-    editor.addEventListener('input',()=>{scheduleSave();updateCount();adjustHeight();});
+    editor.addEventListener('input',()=>{
+      const shrank=editor.value.length<previousEditorLength;
+      previousEditorLength=editor.value.length;
+      scheduleSave();updateCount();adjustHeight({force:shrank});
+      if(!composing)requestCaretFollow();
+    });
+    editor.addEventListener('compositionstart',()=>{composing=true;});
+    editor.addEventListener('compositionend',()=>{composing=false;requestCaretFollow();});
+    editor.addEventListener('keyup',e=>{
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'].includes(e.key))requestCaretFollow();
+    });
+    editor.addEventListener('click',requestCaretFollow);
     title.addEventListener('input',()=>{scheduleSave();document.title=(title.value.trim()||'Untitled')+' — Clearpage';});
     title.addEventListener('blur',renderPages);
-    window.addEventListener('resize',adjustHeight);
+    let lastVisualHeight=window.visualViewport?.height||window.innerHeight;
+    window.addEventListener('resize',()=>{
+      const widthChanged=Math.abs(window.innerWidth-lastViewportWidth)>1;
+      lastViewportWidth=window.innerWidth;
+      if(widthChanged){
+        adjustHeight({force:true});
+        if(document.activeElement===editor)requestCaretFollow();
+      }
+      // Height-only resize also happens while manually scrolling on mobile,
+      // as the browser toolbar appears/disappears. Do not steal that scroll.
+    });
+    window.visualViewport?.addEventListener('resize',()=>{
+      const nextHeight=window.visualViewport.height;
+      const keyboardOpened=lastVisualHeight-nextHeight>140;
+      lastVisualHeight=nextHeight;
+      if(keyboardOpened && document.activeElement===editor)requestCaretFollow();
+    });
     window.addEventListener('pagehide',()=>{readEditor();journalDraft();void persistModel();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){readEditor();journalDraft();void persistModel();}});
     $('openPages').addEventListener('click',toggleSidebar);$('closePages').addEventListener('click',closeSidebar);$('overlay').addEventListener('click',closeSidebar);
