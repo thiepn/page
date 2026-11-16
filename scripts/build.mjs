@@ -1,0 +1,10 @@
+import {mkdirSync,rmSync,copyFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+const copy=(from,to)=>{mkdirSync(to.split('/').slice(0,-1).join('/'),{recursive:true});copyFileSync(from,to);};
+rmSync('dist',{recursive:true,force:true});
+rmSync('.build',{recursive:true,force:true});
+execFileSync(process.execPath,['node_modules/typescript/bin/tsc','-p','tsconfig.vendor.json'],{stdio:'inherit'});
+copy('index.html','dist/index.html');
+for(const name of ['account-sync.js','config.js','merge.js'])copy('src/'+name,'dist/js/'+name);
+for(const name of ['index.js','browser-sso.js'])copy('.build/vendor/account-session/'+name,'dist/js/vendor/account-session/'+name);
+console.log('Clearpage: static build completed, Account runtime pinned');

@@ -1,0 +1,13 @@
+{
+  "name": "clearpage",
+  "private": true,
+  "type": "module",
+  "version": "1.2.0-rc.0",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
