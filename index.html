@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f9f8f5">
 <meta name="description" content="A quiet place to write. Local, minimal, and distraction-free.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Clearpage">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
 <title>Clearpage — A quiet place to write</title>
 <style>
   :root { color-scheme: light; --bg: #f9f8f5; --surface: #ffffff; --ink: #262624; --muted: #84837e; --line: #e9e7e1; --hover: #f0eee8; --accent: #626957; --shadow: 0 16px 60px rgba(37,34,24,.12); --editor-font: Georgia, 'Times New Roman', serif; --editor-size: 21px; --editor-width: 760px; }
@@ -103,6 +108,42 @@
   .dialog-actions button { border:1px solid var(--line); border-radius:8px; padding:10px 15px; background:transparent; color:var(--ink); font-size:12px; }
   .dialog-actions button.primary { background:var(--ink); color:var(--bg); border-color:var(--ink); }
   .dialog-actions button:hover { opacity:.84; }
+  .find-bar { position:fixed; z-index:21; top:74px; right:clamp(16px,4.6vw,74px); width:min(480px,calc(100vw - 32px)); border:1px solid var(--line); border-radius:13px; background:var(--surface); box-shadow:var(--shadow); padding:12px; display:grid; gap:9px; }
+  .find-bar[hidden], .resume-writing[hidden] { display:none!important; }
+  .find-line { display:flex; align-items:center; gap:6px; min-width:0; }
+  .find-line input { min-width:0; width:100%; flex:1; border:1px solid var(--line); color:var(--ink); background:var(--bg); border-radius:7px; padding:9px 10px; font-size:14px; }
+  .find-line button { flex-shrink:0; height:35px; min-width:35px; padding:0 9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:7px; }
+  .find-line button:hover { background:var(--hover); }
+  .find-count { color:var(--muted); font-size:11px; white-space:nowrap; }
+  .find-line .replace-action { font-size:12px; }
+  .resume-writing { position:fixed; z-index:8; bottom:calc(75px + env(safe-area-inset-bottom)); right:clamp(14px,4vw,60px); padding:9px 13px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:20px; box-shadow:var(--shadow); font-size:12px; }
+  .page-pin { color:var(--muted); background:transparent; border:0; font-size:18px; min-width:32px; min-height:34px; border-radius:8px; }
+  .page-pin[aria-pressed="true"] { color:var(--accent); }
+  .page-pin:hover { background:var(--surface); color:var(--ink); }
+  .sidebar-tabs { overflow-x:auto; scrollbar-width:thin; }
+  .sidebar-tabs button { flex-shrink:0; }
+  .history-dialog { width:min(950px,100%); max-height:calc(100dvh - 32px); overflow-y:auto; }
+  .history-compare { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:12px 0 18px; }
+  .history-pane { min-width:0; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--bg); }
+  .history-pane h3 { margin:0; padding:11px 12px; font-size:12px; font-weight:600; border-bottom:1px solid var(--line); }
+  .history-body { height:clamp(180px,34vh,360px); overflow:auto; padding:10px 12px; }
+  .history-body pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; }
+  .history-body .history-line { display:block; }
+  .history-body .changed-line { background:var(--hover); border-radius:3px; }
+  .history-info { color:var(--muted); font-size:12px; line-height:1.5; margin:0; }
+  .dialog { max-height:calc(100dvh - 32px); overflow-y:auto; }
+  body.focus .find-bar { top:14px; }
+  @media (max-width: 680px) {
+    #copyButton, #downloadButton { display:none; }
+    .find-bar { top:65px; left:12px; right:12px; width:auto; padding:9px; }
+    .history-compare { grid-template-columns:1fr; }
+    .history-body { height:185px; }
+    .dialog-backdrop { padding:10px; }
+    .dialog { padding:17px; }
+    .footer { padding-bottom:calc(17px + env(safe-area-inset-bottom)); }
+    .sidebar { padding-bottom:env(safe-area-inset-bottom); }
+  }
+  @media (max-width: 365px) { #focusButton { display:none; } .find-count { font-size:10px; } }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   @media (max-width: 680px) { .topbar { padding: 17px 19px; min-height:64px; } .brand-name { font-size:21px; } .brand-mark { width:19px; height:24px; } .toolbar { gap:1px; } .toolbar-divider { margin:0 3px; } .toolbar .text-btn { display:none; } .page { width:calc(100% - 42px); margin:77px auto 100px; } .page-title { font-size:31px; margin-bottom:30px; } .editor { line-height:1.75; } .footer { padding:12px 21px 17px; } .footer-right { gap:11px; } .delete-page { opacity:1; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition:none!important; animation:none!important; } }
@@ -127,6 +168,8 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3"/></svg>
       </button>
       <span class="toolbar-divider" aria-hidden="true"></span>
+      <button class="icon-btn" id="findButton" title="Find in this page (Ctrl+F)" aria-label="Find in this page" aria-controls="findBar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg></button>
+      <button class="icon-btn" id="historyButton" title="Version history" aria-label="Version history"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 3v6h6M12 7v5l3 2"/></svg></button>
       <button class="icon-btn" id="focusButton" title="Focus mode (Ctrl+Shift+F)" aria-label="Enter focus mode">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg>
       </button>
@@ -139,6 +182,12 @@
           <button data-action="theme" role="menuitem">Switch to dark mode <kbd>◐</kbd></button>
           <button data-action="font" role="menuitem">Font: Serif <kbd>↻</kbd></button>
           <button data-action="size" role="menuitem">Text size: Medium <kbd>↻</kbd></button>
+          <hr>
+          <div class="menu-label">Writing</div>
+          <button data-action="find" role="menuitem">Find &amp; replace <kbd>Ctrl F</kbd></button>
+          <button data-action="history" role="menuitem">Version history</button>
+          <button data-action="copy" role="menuitem">Copy text</button>
+          <button data-action="download" role="menuitem">Download text file</button>
           <hr>
           <div class="menu-label">File</div>
           <button data-action="import" role="menuitem">Import text file</button>
@@ -156,6 +205,10 @@
       </div>
     </nav>
   </header>
+  <div class="find-bar" id="findBar" role="search" aria-label="Find in current page" hidden>
+    <div class="find-line"><label class="sr-only" for="findQuery">Find text</label><input id="findQuery" type="search" placeholder="Find in this page…" spellcheck="false" autocomplete="off"><span class="find-count" id="findCount" role="status" aria-live="polite">0 matches</span><button id="findPrevious" title="Previous match" aria-label="Previous match">↑</button><button id="findNext" title="Next match" aria-label="Next match">↓</button><button id="findClose" title="Close find" aria-label="Close find">×</button></div>
+    <div class="find-line"><label class="sr-only" for="replaceQuery">Replacement text</label><input id="replaceQuery" type="text" placeholder="Replace with…" autocomplete="off"><button class="replace-action" id="replaceOne">Replace</button><button class="replace-action" id="replaceAll">Replace all</button></div>
+  </div>
   <main class="page" aria-label="Writing area">
     <label class="sr-only" for="pageTitle">Page title</label>
     <input id="pageTitle" class="page-title" type="text" placeholder="Untitled" spellcheck="true" maxlength="160" autocomplete="off" aria-label="Page title">
@@ -167,6 +220,7 @@
     <div class="footer-right"><span id="counter">0 words · 0 characters</span><button id="footerFocus" title="Focus mode">Focus</button></div>
   </footer>
 </div>
+<button class="resume-writing" id="resumeWriting" hidden>Return to writing ↓</button>
 <button class="focus-return" id="exitFocus">Exit focus <span aria-hidden="true">Esc</span></button>
 <div class="overlay" id="overlay" aria-hidden="true"></div>
 <aside class="sidebar" id="sidebar" aria-label="Pages" aria-hidden="true">
@@ -174,7 +228,7 @@
   <div class="sidebar-actions"><button class="new-page" id="sidebarNew"><span aria-hidden="true">+</span> New page</button>
     <label class="sidebar-search"><span class="sr-only">Search page titles and content</span><input id="pageSearch" type="search" placeholder="Search pages…" autocomplete="off" spellcheck="false" aria-keyshortcuts="Control+K Meta+K" aria-controls="pageList"></label>
   </div>
-  <div class="sidebar-tabs" role="group" aria-label="Page collections"><button id="pagesTab" aria-pressed="true">Pages</button><button id="trashTab" aria-pressed="false">Recently deleted</button></div>
+  <div class="sidebar-tabs" role="group" aria-label="Page collections"><button id="pagesTab" aria-pressed="true">Pages</button><button id="pinnedTab" aria-pressed="false">Pinned</button><button id="recentTab" aria-pressed="false">Recent</button><button id="trashTab" aria-pressed="false">Recently deleted</button></div>
   <span class="search-summary" id="searchSummary" role="status" aria-live="polite"></span>
   <div class="page-list" id="pageList"></div>
   <div class="sidebar-foot">Stored on this device, without an account. Use <strong>Back up all pages</strong> to protect your writing from browser resets.</div>
@@ -187,10 +241,15 @@
   </div>
 </div>
 <div class="dialog-backdrop" id="recoveryBackdrop" aria-hidden="true">
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle" aria-describedby="recoveryDescription">
-    <h2 id="recoveryTitle">Recover a page</h2><p id="recoveryDescription">Choose an earlier save and recover a page as a new copy. Existing writing is not overwritten.</p>
+  <div class="dialog history-dialog" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle" aria-describedby="recoveryDescription">
+    <h2 id="recoveryTitle">Version history</h2><p id="recoveryDescription">Inspect earlier local snapshots side by side. Recovering creates a new page; your current writing stays untouched.</p>
     <div class="recovery-fields"><label>Saved version<select id="recoverySnapshot"></select></label><label>Page<select id="recoveryPage"></select></label></div>
-    <div class="dialog-actions"><button id="recoveryCancel">Cancel</button><button id="recoveryConfirm" class="primary">Recover page</button></div>
+    <p class="history-info" id="historyInfo">Choose a saved version to preview.</p>
+    <div class="history-compare">
+      <section class="history-pane" aria-label="Selected saved version"><h3>Earlier version</h3><div class="history-body"><pre id="historyOlder"></pre></div></section>
+      <section class="history-pane" aria-label="Current version"><h3>Current page</h3><div class="history-body"><pre id="historyCurrent"></pre></div></section>
+    </div>
+    <div class="dialog-actions"><button id="recoveryCancel">Close</button><button id="recoveryConfirm" class="primary">Recover as new page</button></div>
   </div>
 </div>
 <div id="printArea" style="display:none"><h1 id="printTitle"></h1><div class="print-text" id="printText"></div></div>
@@ -203,6 +262,9 @@
   const FALLBACK_KEY = 'clearpage.app.v2.fallback';
   const DRAFT_KEY = 'clearpage.emergency.v2';
   const PREF_KEY = 'clearpage.preferences.v1';
+  // UI metadata is deliberately separate from v2 note snapshots and backups.
+  const ORGANIZATION_KEY = 'clearpage.organization.v1';
+  const CURSOR_KEY = 'clearpage.cursor-session.v1';
   const DB_NAME = 'clearpage.data.v2';
   const STORE = 'snapshots';
   const MAX_PAGES = 5000;
@@ -213,6 +275,8 @@
   let saveTimer = null, toastTimer = null, toastAction = null, dialogAction = null;
   let writeQueue = Promise.resolve(), saveRequest = 0, storageBlocked = false;
   let sidebarView = 'pages', selectedIndex = 0, visibleIds = [], recoveryVersions = [];
+  let organization = {pinned:[],recent:[]}, savedCursors = {};
+  let lastFollowScrollY = 0;
   let previousEditorLength = 0, lastViewportWidth = window.innerWidth;
   let followFrame = 0, composing = false;
 
@@ -220,6 +284,53 @@
   const emptyNote = () => ({id:makeId(), title:'', text:'', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
   const freshModel = () => { const note=emptyNote(); return {notes:[note], trash:[], activeId:note.id}; };
   function getJSON(key) { try { const value=localStorage.getItem(key); return value === null ? null : JSON.parse(value); } catch { return null; } }
+  function loadOrganization() {
+    const raw=getJSON(ORGANIZATION_KEY);
+    const ids=values=>Array.isArray(values)?[...new Set(values.filter(x=>typeof x==='string' && x.length<=200))].slice(0,MAX_PAGES):[];
+    organization={pinned:ids(raw?.pinned),recent:ids(raw?.recent).slice(0,24)};
+    try{
+      const session=JSON.parse(sessionStorage.getItem(CURSOR_KEY)||'{}');
+      savedCursors=session && typeof session==='object' && !Array.isArray(session)?session:{};
+    }catch{savedCursors={};}
+  }
+  function saveOrganization(){
+    try{localStorage.setItem(ORGANIZATION_KEY,JSON.stringify(organization));}
+    catch{showToast('Page shortcuts could not be saved on this device');}
+  }
+  function markOpened(id) {
+    organization.recent=[id,...organization.recent.filter(x=>x!==id)].slice(0,24);
+    saveOrganization();
+  }
+  function togglePin(id) {
+    if(!model.notes.some(n=>n.id===id))return;
+    organization.pinned=organization.pinned.includes(id)?organization.pinned.filter(x=>x!==id):[id,...organization.pinned];
+    saveOrganization();renderPages();
+  }
+  function rememberCursor(){
+    if(document.activeElement!==editor||!model)return;
+    const id=current()?.id;
+    if(!id)return;
+    const pos=editor.selectionStart;
+    if(!Number.isSafeInteger(pos))return;
+    savedCursors[id]=Math.min(pos,MAX_TEXT);
+    // Store positions only, never note content. Keep the last 100 IDs.
+    const entries=Object.entries(savedCursors).slice(-100);
+    savedCursors=Object.fromEntries(entries);
+    try{sessionStorage.setItem(CURSOR_KEY,JSON.stringify(savedCursors));}catch{}
+  }
+  function updateResumeButton(offer=false){
+    const b=$('resumeWriting');
+    const saved=savedCursors[current()?.id]||0;
+    b.hidden=!(offer && editor.value.length>100 && saved>0);
+    b.textContent=offer?'Resume writing ↓':'Return to writing ↓';
+  }
+  function resumeWriting(){
+    const pos=Math.max(0,Math.min(editor.value.length,savedCursors[current()?.id]||editor.selectionStart));
+    editor.focus({preventScroll:true});
+    editor.setSelectionRange(pos,pos);
+    requestCaretFollow();
+    $('resumeWriting').hidden=true;
+  }
   function saneNote(n) { return !!(n && typeof n === 'object' && typeof n.id === 'string' && n.id.length > 0 && n.id.length <= 200 && typeof n.title === 'string' && n.title.length <= 160 && typeof n.text === 'string' && n.text.length <= MAX_TEXT); }
   function normalize(candidate) {
     if(!candidate || !Array.isArray(candidate.notes) || candidate.notes.length < 1 || candidate.notes.length > MAX_PAGES || !candidate.notes.every(saneNote)) return null;
@@ -416,16 +527,22 @@
     applyPreferences();
     await initStorage();
     if(!model)model=freshModel();
-    loadPage();wire();
+    loadOrganization();loadPage();wire();
+    if('serviceWorker' in navigator && window.isSecureContext){
+      navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
+    }
     if(matchMedia('(min-width: 800px)').matches)setTimeout(()=>editor.focus({preventScroll:true}),100);
   }
   function current(){return model.notes.find(n=>n.id===model.activeId)||model.notes[0];}
   function pageName(n){return n.title.trim() || n.text.trim().split('\n')[0].slice(0,45) || 'Untitled';}
   function loadPage() {
     const n=current();title.value=n.title;editor.value=n.text;
+    editor.setSelectionRange(0,0);
     previousEditorLength=n.text.length;
     document.title=(n.title.trim()||'Untitled')+' — Clearpage';
-    adjustHeight({force:true});editor.scrollTop=0;updateCount();renderPages();
+    adjustHeight({force:true});editor.scrollTop=0;updateCount();markOpened(n.id);renderPages();
+    lastFollowScrollY=0;updateResumeButton(true);
+    if(!$('findBar').hidden)refreshFind();
     // Switching notes must never inherit the previous note's long-page position.
     window.scrollTo({top:0,behavior:'auto'});
   }
@@ -491,6 +608,8 @@
     }else if(caret.top<safeTop){
       window.scrollBy({top:Math.floor(caret.top-safeTop),behavior:'auto'});
     }
+    lastFollowScrollY=window.scrollY;
+    $('resumeWriting').hidden=true;
   }
   function requestCaretFollow(){
     if(followFrame)cancelAnimationFrame(followFrame);
@@ -505,24 +624,35 @@
     const begin=Math.max(0,ix-22);return (begin?'…':'')+text.slice(begin,begin+85)+(begin+85<text.length?'…':'');
   }
   function visibleNotes(){
-    const source=sidebarView==='pages'?model.notes:model.trash;
+    const source=sidebarView==='trash'?model.trash:model.notes;
     const terms=search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    const filtered=terms.length?source.filter(n=>{const hay=(n.title+'\n'+n.text).toLocaleLowerCase();return terms.every(t=>hay.includes(t));}):source;
-    return filtered.sort((a,b)=>(Date.parse(sidebarView==='pages'?b.updatedAt:b.deletedAt)||0)-(Date.parse(sidebarView==='pages'?a.updatedAt:a.deletedAt)||0));
+    const filtered=source.filter(n=>{
+      if(sidebarView==='pinned' && !organization.pinned.includes(n.id))return false;
+      if(sidebarView==='recent' && !organization.recent.includes(n.id))return false;
+      if(!terms.length)return true;
+      const hay=(n.title+'\n'+n.text).toLocaleLowerCase();
+      return terms.every(t=>hay.includes(t));
+    });
+    if(sidebarView==='pinned'||sidebarView==='recent'){
+      const order=sidebarView==='pinned'?organization.pinned:organization.recent;
+      return filtered.sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
+    }
+    return filtered.sort((a,b)=>(Date.parse(sidebarView==='trash'?b.deletedAt:b.updatedAt)||0)-(Date.parse(sidebarView==='trash'?a.deletedAt:a.updatedAt)||0));
   }
   function renderPages() {
     if(!model)return;
     const list=$('pageList');list.replaceChildren();
     $('pagesTab').textContent='Pages ('+model.notes.length+')';
-    $('trashTab').textContent='Recently deleted ('+model.trash.length+')';
-    $('pagesTab').setAttribute('aria-pressed',String(sidebarView==='pages'));
-    $('trashTab').setAttribute('aria-pressed',String(sidebarView==='trash'));
-    $('sidebarTitle').textContent=sidebarView==='pages'?'Your pages':'Recently deleted';
+    $('pinnedTab').textContent='Pinned ('+model.notes.filter(n=>organization.pinned.includes(n.id)).length+')';
+    $('recentTab').textContent='Recent';
+    $('trashTab').textContent='Deleted ('+model.trash.length+')';
+    for(const tab of ['pages','pinned','recent','trash'])$(tab+'Tab').setAttribute('aria-pressed',String(sidebarView===tab));
+    $('sidebarTitle').textContent=({pages:'Your pages',pinned:'Pinned pages',recent:'Recently opened',trash:'Recently deleted'})[sidebarView];
     const matches=visibleNotes();visibleIds=matches.map(n=>n.id);
     if(selectedIndex>=matches.length)selectedIndex=Math.max(0,matches.length-1);
     const limit=100;
-    $('searchSummary').textContent=matches.length+' '+(sidebarView==='pages'?'page':'deleted page')+(matches.length===1?'':'s')+(matches.length>limit?' (showing first '+limit+')':'');
-    if(!matches.length){const empty=document.createElement('p');empty.className='empty-list';empty.textContent=search.value.trim()?'No matching pages.':sidebarView==='trash'?'No deleted pages.':'No pages yet.';list.append(empty);return;}
+    $('searchSummary').textContent=matches.length+' '+(sidebarView==='trash'?'deleted page':'page')+(matches.length===1?'':'s')+(matches.length>limit?' (showing first '+limit+')':'');
+    if(!matches.length){const empty=document.createElement('p');empty.className='empty-list';empty.textContent=search.value.trim()?'No matching pages.':({pages:'No pages yet.',pinned:'Pin any page using its star button.',recent:'Open a page to see it here.',trash:'No deleted pages.'})[sidebarView];list.append(empty);return;}
     const fragment=document.createDocumentFragment();
     matches.slice(0,limit).forEach((n,i)=>{
       const item=document.createElement('div');item.className='page-item'+(n.id===model.activeId&&sidebarView==='pages'?' active':'')+(i===selectedIndex?' keyboard-selected':'');
@@ -534,21 +664,32 @@
       main.append(label,meta);
       const query=search.value.trim().split(/\s+/)[0];
       if(query){const snippet=snippetFor(n,query);if(snippet){const sub=document.createElement('span');sub.className='page-item-snippet';sub.textContent=snippet;main.append(sub);}}
-      main.addEventListener('click',()=>sidebarView==='pages'?switchPage(n.id):restoreTrash(n.id));
+      main.addEventListener('click',()=>sidebarView==='trash'?restoreTrash(n.id):switchPage(n.id));
+      const pin=document.createElement('button');
+      pin.type='button';pin.className='page-pin';pin.textContent=organization.pinned.includes(n.id)?'★':'☆';
+      pin.title=organization.pinned.includes(n.id)?'Unpin page':'Pin page';
+      pin.setAttribute('aria-label',pin.title+': '+pageName(n));
+      pin.setAttribute('aria-pressed',String(organization.pinned.includes(n.id)));
+      pin.addEventListener('click',()=>togglePin(n.id));
       const del=document.createElement('button');del.type='button';del.className='delete-page';del.textContent='×';del.title=sidebarView==='trash'?'Delete permanently':'Move to recently deleted';del.setAttribute('aria-label',(sidebarView==='trash'?'Permanently delete ':'Delete ')+pageName(n));
       del.addEventListener('click',()=>sidebarView==='pages'?confirmDelete(n.id):confirmPermanentDelete(n.id));
-      item.append(main,del);fragment.append(item);
+      if(sidebarView==='trash')item.append(main,del);
+      else item.append(main,pin,del);
+      fragment.append(item);
     });
     list.append(fragment);
   }
   function changeView(view){sidebarView=view;selectedIndex=0;search.value='';renderPages();search.focus();}
-  function chooseSelected(){const id=visibleIds[selectedIndex];if(!id)return;if(sidebarView==='pages')switchPage(id);else restoreTrash(id);}
-  function switchPage(id){if(!model.notes.some(n=>n.id===id))return;void save();model.activeId=id;void persistModel();loadPage();closeSidebar();editor.focus({preventScroll:true});}
+  function chooseSelected(){const id=visibleIds[selectedIndex];if(!id)return;if(sidebarView==='trash')restoreTrash(id);else switchPage(id);}
+  function switchPage(id){if(!model.notes.some(n=>n.id===id))return;rememberCursor();void save();model.activeId=id;void persistModel();loadPage();closeSidebar();editor.focus({preventScroll:true});}
   function cyclePage(step){const notes=[...model.notes].sort((a,b)=>(Date.parse(b.updatedAt)||0)-(Date.parse(a.updatedAt)||0));if(notes.length<2)return;const index=notes.findIndex(n=>n.id===model.activeId);switchPage(notes[(index+step+notes.length)%notes.length].id);showToast('Page '+(((index+step+notes.length)%notes.length)+1)+' of '+notes.length);}
-  function addPage(){if(model.notes.length>=MAX_PAGES){showToast('Page limit reached — export a backup');return;}void save();const n=emptyNote();model.notes.push(n);model.activeId=n.id;void persistModel();loadPage();closeSidebar();title.focus({preventScroll:true});}
+  function addPage(){if(model.notes.length>=MAX_PAGES){showToast('Page limit reached — export a backup');return;}rememberCursor();void save();const n=emptyNote();model.notes.push(n);model.activeId=n.id;sidebarView='pages';search.value='';selectedIndex=0;void persistModel();loadPage();closeSidebar();title.focus({preventScroll:true});}
   function confirmDelete(id){const n=model.notes.find(n=>n.id===id);if(!n)return;confirmBox('Delete this page?','“'+pageName(n)+'” will move to Recently deleted, where you can restore it later.','Move to trash',()=>{
     readEditor();const note=model.notes.find(item=>item.id===id);if(!note)return;
     model.trash.unshift({...note,deletedAt:new Date().toISOString()});model.notes=model.notes.filter(item=>item.id!==id);
+    organization.pinned=organization.pinned.filter(x=>x!==id);
+    organization.recent=organization.recent.filter(x=>x!==id);
+    saveOrganization();
     if(!model.notes.length)model.notes=[emptyNote()];
     if(model.activeId===id)model.activeId=model.notes[0].id;
     void persistModel({safety:true});loadPage();
@@ -610,7 +751,120 @@
       });
     }catch{showToast('This is not a valid Clearpage backup');}};reader.onerror=()=>showToast('Could not read the backup');reader.readAsText(file);
   }
+
+  function findPattern(){
+    const query=$('findQuery').value;
+    if(!query)return null;
+    const escaped=[...query].map(ch=>'.+*?^$()[]{}|\\'.includes(ch)?'\\'+ch:ch).join('');
+    return new RegExp(escaped,'gi');
+  }
+  function findHits(){
+    const re=findPattern(),hits=[];if(!re)return hits;
+    let match;
+    while((match=re.exec(editor.value)) && hits.length<5000){
+      hits.push({start:match.index,end:match.index+match[0].length});
+    }
+    return hits;
+  }
+  function refreshFind(){
+    const hits=findHits(),start=editor.selectionStart,end=editor.selectionEnd;
+    const selected=hits.findIndex(h=>h.start===start&&h.end===end);
+    $('findCount').textContent=!$('findQuery').value?'0 matches':!hits.length?'No matches':(selected<0?'':(selected+1)+' / ')+hits.length+(hits.length===5000?'+':'')+' matches';
+    $('replaceOne').disabled=hits.length===0;
+    $('replaceAll').disabled=hits.length===0||hits.length===5000;
+    return hits;
+  }
+  function openFind(replace=false){
+    closeMenu();closeSidebar();$('findBar').hidden=false;$('findButton').setAttribute('aria-expanded','true');
+    const input=$('findQuery');
+    if(!input.value && editor.selectionEnd>editor.selectionStart && editor.selectionEnd-editor.selectionStart<=100){
+      input.value=editor.value.slice(editor.selectionStart,editor.selectionEnd);
+    }
+    refreshFind();const target=replace?$('replaceQuery'):input;
+    target.focus();target.select();
+  }
+  function closeFind(){
+    if($('findBar').hidden)return;
+    $('findBar').hidden=true;$('findButton').setAttribute('aria-expanded','false');
+    editor.focus({preventScroll:true});
+  }
+  function selectFindHit(hit){
+    if(!hit)return;
+    editor.focus({preventScroll:true});
+    editor.setSelectionRange(hit.start,hit.end);
+    rememberCursor();requestCaretFollow();refreshFind();
+  }
+  function nextFind(direction=1){
+    const hits=refreshFind();if(!hits.length)return;
+    const start=editor.selectionStart,end=editor.selectionEnd;
+    const selected=hits.findIndex(h=>h.start===start&&h.end===end);
+    let next;
+    if(selected>=0)next=(selected+direction+hits.length)%hits.length;
+    else if(direction===1){next=hits.findIndex(h=>h.start>=start);if(next<0)next=0;}
+    else{next=hits.findLastIndex(h=>h.end<=start);if(next<0)next=hits.length-1;}
+    selectFindHit(hits[next]);
+  }
+  function replaceCurrent(){
+    const hits=refreshFind();if(!hits.length)return;
+    const start=editor.selectionStart,end=editor.selectionEnd;
+    const match=hits.find(h=>h.start===start&&h.end===end)||hits.find(h=>h.start>=start)||hits[0];
+    const noteId=current().id,before=editor.value;
+    editor.setRangeText($('replaceQuery').value,match.start,match.end,'end');
+    const after=editor.value;
+    editor.dispatchEvent(new Event('input',{bubbles:true}));
+    if(findHits().length)nextFind();else {refreshFind();editor.focus({preventScroll:true});requestCaretFollow();}
+    showToast('Replaced one match',{label:'Undo',action:()=>{
+      if(current().id!==noteId||editor.value!==after){showToast('Page changed — consult version history');return;}
+      editor.value=before;editor.setSelectionRange(match.start,match.end);
+      editor.dispatchEvent(new Event('input',{bubbles:true}));
+      refreshFind();editor.focus({preventScroll:true});requestCaretFollow();
+    }});
+  }
+  function replaceEvery(){
+    const hits=refreshFind();if(!hits.length)return;
+    if(hits.length===5000){showToast('Too many matches to replace at once');return;}
+    const id=current().id,before=editor.value,oldTitle=title.value;
+    const replacement=$('replaceQuery').value,result=before.replace(findPattern(),()=>replacement);
+    if(result.length>MAX_TEXT){showToast('Replacement exceeds page length limit');return;}
+    editor.value=result;editor.setSelectionRange(0,0);
+    editor.dispatchEvent(new Event('input',{bubbles:true}));refreshFind();
+    showToast('Replaced '+hits.length+' match'+(hits.length===1?'':'es'),{label:'Undo',action:()=>{
+      if(current().id!==id||editor.value!==result||title.value!==oldTitle){showToast('Page changed — consult version history');return;}
+      editor.value=before;previousEditorLength=before.length;
+      editor.dispatchEvent(new Event('input',{bubbles:true}));
+      adjustHeight({force:true});refreshFind();editor.focus({preventScroll:true});
+    }});
+  }
+  function renderHistoryPreview(){
+    const version=recoveryVersions[Number($('recoverySnapshot').value)||0];if(!version)return;
+    const options=[...version.data.notes,...version.data.trash],past=options[Number($('recoveryPage').value)||0];
+    if(!past)return;
+    const present=model.notes.find(n=>n.id===past.id)||model.trash.find(n=>n.id===past.id);
+    const before=past.text,after=present?.text||'';
+    const beforeLines=before.slice(0,10000).split('\n').slice(0,170);
+    const afterLines=after.slice(0,10000).split('\n').slice(0,170);
+    function show(container,lines,other){
+      container.replaceChildren();
+      const values=new Set(other);
+      for(const line of lines){
+        const span=document.createElement('span');span.textContent=line||' ';
+        span.className='history-line'+(values.has(line)?'':' changed-line');
+        container.append(span);
+      }
+      if(lines.length>=170)container.append(document.createTextNode('\n… preview limited to 170 lines'));
+    }
+    show($('historyOlder'),beforeLines,afterLines);
+    if(present)show($('historyCurrent'),afterLines,beforeLines);
+    else $('historyCurrent').textContent='This page is not in the current collection.';
+    const date=new Date(version.record.savedAt);
+    $('historyInfo').textContent=(Number.isNaN(date.getTime())?'Earlier save':date.toLocaleString())+
+      ' · '+wordCount(before)+' saved words'+(present?' vs '+wordCount(after)+' current words':' · deleted or unavailable')+
+      (before.length>10000||after.length>10000?' · preview shortened, full text is recoverable':'');
+    $('recoveryConfirm').disabled=model.notes.length>=MAX_PAGES;
+  }
+
   async function openRecovery(){
+    closeFind();readEditor();
     if(!db || storageMode!=='idb'){showToast('Recovery snapshots unavailable; import a JSON backup');return;}
     try{
       const rows=await allRows();const valid=rows.map(unpack).filter(Boolean).filter(x=>x.key!=='current');
@@ -626,6 +880,7 @@
     const choice=$('recoveryPage');choice.replaceChildren();
     const options=[...version.data.notes.map(n=>({n,deleted:false})),...version.data.trash.map(n=>({n,deleted:true}))];
     for(let i=0;i<options.length;i++){const o=document.createElement('option');o.value=String(i);o.textContent=(options[i].deleted?'Deleted: ':'')+pageName(options[i].n);choice.append(o);}
+    renderHistoryPreview();
   }
   function closeRecovery(){$('recoveryBackdrop').classList.remove('open');$('recoveryBackdrop').setAttribute('aria-hidden','true');editor.focus({preventScroll:true});}
   function recoverSelected(){
@@ -640,13 +895,17 @@
     case 'theme':preferences.theme=preferences.theme==='dark'?'light':'dark';applyPreferences();savePrefs();break;
     case 'font':preferences.font=({serif:'sans',sans:'mono',mono:'serif'})[preferences.font];applyPreferences();savePrefs();break;
     case 'size':preferences.size=({small:'medium',medium:'large',large:'small'})[preferences.size];applyPreferences();savePrefs();break;
+    case 'find':openFind();break;
+    case 'history':void openRecovery();break;
+    case 'copy':void copyText();break;
+    case 'download':downloadText('txt');break;
     case 'import':$('importFile').click();break;
     case 'markdown':downloadText('md');break;
     case 'print':printPage();break;
     case 'backup':backup();break;
     case 'restore':$('restoreFile').click();break;
     case 'recovery':void openRecovery();break;
-    case 'shortcuts':confirmBox('Keyboard shortcuts','Ctrl / Cmd + K: find a page · Up / Down + Enter: select · Ctrl / Cmd + Alt + Left / Right: previous / next page · Ctrl / Cmd + Alt + N: new page · Ctrl / Cmd + S: download text · Ctrl / Cmd + Shift + F: focus mode · Esc: close or leave focus.','Close',()=>{});break;
+    case 'shortcuts':confirmBox('Keyboard shortcuts','Ctrl / Cmd + F: find within page · Ctrl / Cmd + H: replace text · Enter / Shift+Enter: next / previous match · Ctrl / Cmd + K: find pages · Ctrl / Cmd + Alt + Left / Right: switch pages · Ctrl / Cmd + Alt + N: new page · Ctrl / Cmd + S: download text · Ctrl / Cmd + Shift + F: focus mode · Esc: close overlays.','Close',()=>{});break;
     case 'clear':confirmBox('Clear this page?','The title stays. The prior text can be recovered with Undo or from an automatic snapshot.','Clear text',async()=>{
       const old=editor.value, pageId=current().id;if(!old)return;
       await save(); // Preserve the latest text before the destructive operation.
@@ -664,15 +923,17 @@
     editor.addEventListener('input',()=>{
       const shrank=editor.value.length<previousEditorLength;
       previousEditorLength=editor.value.length;
-      scheduleSave();updateCount();adjustHeight({force:shrank});
+      scheduleSave();updateCount();adjustHeight({force:shrank});rememberCursor();
+      if(!$('findBar').hidden)refreshFind();
       if(!composing)requestCaretFollow();
     });
     editor.addEventListener('compositionstart',()=>{composing=true;});
     editor.addEventListener('compositionend',()=>{composing=false;requestCaretFollow();});
     editor.addEventListener('keyup',e=>{
+      rememberCursor();
       if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'].includes(e.key))requestCaretFollow();
     });
-    editor.addEventListener('click',requestCaretFollow);
+    editor.addEventListener('click',()=>{rememberCursor();requestCaretFollow();});
     title.addEventListener('input',()=>{scheduleSave();document.title=(title.value.trim()||'Untitled')+' — Clearpage';});
     title.addEventListener('blur',renderPages);
     let lastVisualHeight=window.visualViewport?.height||window.innerHeight;
@@ -692,10 +953,29 @@
       lastVisualHeight=nextHeight;
       if(keyboardOpened && document.activeElement===editor)requestCaretFollow();
     });
-    window.addEventListener('pagehide',()=>{readEditor();journalDraft();void persistModel();});
+    window.addEventListener('scroll',()=>{
+      if(document.activeElement===editor && lastFollowScrollY>window.scrollY+230 && editor.value.length>100){
+        const b=$('resumeWriting');b.hidden=false;b.textContent='Return to writing ↓';
+      }else if(window.scrollY>=lastFollowScrollY-25 && $('resumeWriting').textContent==='Return to writing ↓'){
+        $('resumeWriting').hidden=true;
+      }
+    },{passive:true});
+    $('resumeWriting').addEventListener('click',resumeWriting);
+    window.addEventListener('pagehide',()=>{rememberCursor();readEditor();journalDraft();void persistModel();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){readEditor();journalDraft();void persistModel();}});
+    $('findButton').addEventListener('click',()=>$('findBar').hidden?openFind():closeFind());
+    $('findClose').addEventListener('click',closeFind);
+    $('findQuery').addEventListener('input',refreshFind);
+    $('findQuery').addEventListener('keydown',e=>{
+      if(e.key==='Enter'){e.preventDefault();nextFind(e.shiftKey?-1:1);}
+    });
+    $('findPrevious').addEventListener('click',()=>nextFind(-1));
+    $('findNext').addEventListener('click',()=>nextFind(1));
+    $('replaceOne').addEventListener('click',replaceCurrent);
+    $('replaceAll').addEventListener('click',replaceEvery);
+    $('historyButton').addEventListener('click',()=>{void openRecovery();});
     $('openPages').addEventListener('click',toggleSidebar);$('closePages').addEventListener('click',closeSidebar);$('overlay').addEventListener('click',closeSidebar);
-    $('pagesTab').addEventListener('click',()=>changeView('pages'));$('trashTab').addEventListener('click',()=>changeView('trash'));
+    $('pagesTab').addEventListener('click',()=>changeView('pages'));$('pinnedTab').addEventListener('click',()=>changeView('pinned'));$('recentTab').addEventListener('click',()=>changeView('recent'));$('trashTab').addEventListener('click',()=>changeView('trash'));
     $('newButton').addEventListener('click',addPage);$('sidebarNew').addEventListener('click',addPage);
     search.addEventListener('input',()=>{selectedIndex=0;renderPages();});
     search.addEventListener('keydown',e=>{
@@ -710,13 +990,14 @@
     $('cancelDialog').addEventListener('click',closeDialog);
     $('confirmDialog').addEventListener('click',()=>{const action=dialogAction;closeDialog();if(action)action();});
     $('dialogBackdrop').addEventListener('click',e=>{if(e.target===$('dialogBackdrop'))closeDialog();});
-    $('recoverySnapshot').addEventListener('change',fillRecoveryPages);$('recoveryCancel').addEventListener('click',closeRecovery);$('recoveryConfirm').addEventListener('click',recoverSelected);
+    $('recoverySnapshot').addEventListener('change',fillRecoveryPages);$('recoveryPage').addEventListener('change',renderHistoryPreview);$('recoveryCancel').addEventListener('click',closeRecovery);$('recoveryConfirm').addEventListener('click',recoverSelected);
     $('recoveryBackdrop').addEventListener('click',e=>{if(e.target===$('recoveryBackdrop'))closeRecovery();});
     document.addEventListener('pointerdown',e=>{if(!$('moreMenu').contains(e.target)&&!$('menuButton').contains(e.target))closeMenu();});
     document.addEventListener('keydown',e=>{
       if(e.key==='Escape'){
         if($('recoveryBackdrop').classList.contains('open'))closeRecovery();
         else if($('dialogBackdrop').classList.contains('open'))closeDialog();
+        else if(!$('findBar').hidden)closeFind();
         else if($('sidebar').classList.contains('open')){closeSidebar();editor.focus({preventScroll:true});}
         else if($('moreMenu').classList.contains('open'))closeMenu();
         else if(document.body.classList.contains('focus'))toggleFocus(false);
@@ -724,7 +1005,9 @@
       }
       if($('dialogBackdrop').classList.contains('open')||$('recoveryBackdrop').classList.contains('open'))return;
       const mod=e.metaKey||e.ctrlKey, key=e.key.toLowerCase();
-      if(mod && !e.altKey && !e.shiftKey && key==='k'){e.preventDefault();sidebarView='pages';selectedIndex=0;openSidebar();}
+      if(mod && !e.altKey && !e.shiftKey && key==='f'){e.preventDefault();openFind();}
+      else if(mod && !e.altKey && key==='h'){e.preventDefault();openFind(true);}
+      else if(mod && !e.altKey && !e.shiftKey && key==='k'){e.preventDefault();sidebarView='pages';selectedIndex=0;openSidebar();}
       else if(mod && !e.altKey && !e.shiftKey && key==='s'){e.preventDefault();downloadText('txt');}
       else if(mod && e.altKey && key==='n'){e.preventDefault();addPage();}
       else if(mod && e.altKey && e.key==='ArrowLeft'){e.preventDefault();cyclePage(1);}
