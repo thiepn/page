@@ -675,14 +675,22 @@
     editor.addEventListener('click',requestCaretFollow);
     title.addEventListener('input',()=>{scheduleSave();document.title=(title.value.trim()||'Untitled')+' — Clearpage';});
     title.addEventListener('blur',renderPages);
+    let lastVisualHeight=window.visualViewport?.height||window.innerHeight;
     window.addEventListener('resize',()=>{
       const widthChanged=Math.abs(window.innerWidth-lastViewportWidth)>1;
       lastViewportWidth=window.innerWidth;
-      if(widthChanged)adjustHeight({force:true});
-      if(document.activeElement===editor)requestCaretFollow();
+      if(widthChanged){
+        adjustHeight({force:true});
+        if(document.activeElement===editor)requestCaretFollow();
+      }
+      // Height-only resize also happens while manually scrolling on mobile,
+      // as the browser toolbar appears/disappears. Do not steal that scroll.
     });
     window.visualViewport?.addEventListener('resize',()=>{
-      if(document.activeElement===editor)requestCaretFollow();
+      const nextHeight=window.visualViewport.height;
+      const keyboardOpened=lastVisualHeight-nextHeight>140;
+      lastVisualHeight=nextHeight;
+      if(keyboardOpened && document.activeElement===editor)requestCaretFollow();
     });
     window.addEventListener('pagehide',()=>{readEditor();journalDraft();void persistModel();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){readEditor();journalDraft();void persistModel();}});
