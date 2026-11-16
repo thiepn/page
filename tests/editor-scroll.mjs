@@ -53,8 +53,15 @@ async function run(engine,name,width,height){
 
     // Manual reading must not be overridden by a pending editor resize.
     await page.evaluate(()=>window.scrollTo(0,0));
-    await page.waitForTimeout(160);
+    await page.waitForTimeout(420); // Includes the autosave debounce.
     assert.ok((await metrics(page)).scrollY<3,name+': manually scrolling to the top must stick');
+    // Height-only viewport changes (e.g. mobile browser chrome) must not
+    // drag a reader back to a focused caret in the long document.
+    await page.setViewportSize({width,height:height-55});
+    await settle(page);
+    assert.ok((await metrics(page)).scrollY<3,name+': viewport chrome resize must not steal manual scroll');
+    await page.setViewportSize({width,height});
+    await settle(page);
 
     // Continuing to write must bring the caret back and follow later lines.
     await editor.press('ControlOrMeta+End');
