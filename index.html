@@ -747,6 +747,110 @@
       });
     }catch{showToast('This is not a valid Clearpage backup');}};reader.onerror=()=>showToast('Could not read the backup');reader.readAsText(file);
   }
+
+  function findPattern(){
+    const query=$('findQuery').value;
+    if(!query)return null;
+    const escaped=[...query].map(ch=>'.+*?^$()[]{}|\\'.includes(ch)?'\\'+ch:ch).join('');
+    return new RegExp(escaped,'gi');
+  }
+  function findHits(){
+    const re=findPattern(),hits=[];if(!re)return hits;
+    let match;
+    while((match=re.exec(editor.value)) && hits.length<5000){
+      hits.push({start:match.index,end:match.index+match[0].length});
+    }
+    return hits;
+  }
+  function refreshFind(){
+    const hits=findHits(),start=editor.selectionStart,end=editor.selectionEnd;
+    const selected=hits.findIndex(h=>h.start===start&&h.end===end);
+    $('findCount').textContent=!$('findQuery').value?'0 matches':!hits.length?'No matches':(selected<0?'':(selected+1)+' / ')+hits.length+(hits.length===5000?'+':'')+' matches';
+    $('replaceOne').disabled=hits.length===0;
+    $('replaceAll').disabled=hits.length===0||hits.length===5000;
+    return hits;
+  }
+  function openFind(replace=false){
+    closeMenu();$('findBar').hidden=false;$('findButton').setAttribute('aria-expanded','true');
+    const input=$('findQuery');
+    if(!input.value && editor.selectionEnd>editor.selectionStart && editor.selectionEnd-editor.selectionStart<=100){
+      input.value=editor.value.slice(editor.selectionStart,editor.selectionEnd);
+    }
+    refreshFind();const target=replace?$('replaceQuery'):input;
+    target.focus();target.select();
+  }
+  function closeFind(){
+    if($('findBar').hidden)return;
+    $('findBar').hidden=true;$('findButton').setAttribute('aria-expanded','false');
+    editor.focus({preventScroll:true});
+  }
+  function selectFindHit(hit){
+    if(!hit)return;
+    editor.focus({preventScroll:true});
+    editor.setSelectionRange(hit.start,hit.end);
+    rememberCursor();requestCaretFollow();refreshFind();
+  }
+  function nextFind(direction=1){
+    const hits=refreshFind();if(!hits.length)return;
+    const start=editor.selectionStart,end=editor.selectionEnd;
+    const selected=hits.findIndex(h=>h.start===start&&h.end===end);
+    let next;
+    if(selected>=0)next=(selected+direction+hits.length)%hits.length;
+    else if(direction===1){next=hits.findIndex(h=>h.start>=start);if(next<0)next=0;}
+    else{next=hits.findLastIndex(h=>h.end<=start);if(next<0)next=hits.length-1;}
+    selectFindHit(hits[next]);
+  }
+  function replaceCurrent(){
+    const hits=refreshFind();if(!hits.length)return;
+    const start=editor.selectionStart,end=editor.selectionEnd;
+    const match=hits.find(h=>h.start===start&&h.end===end)||hits.find(h=>h.start>=start)||hits[0];
+    editor.setRangeText($('replaceQuery').value,match.start,match.end,'end');
+    editor.dispatchEvent(new Event('input',{bubbles:true}));
+    if(findHits().length)nextFind();else {refreshFind();editor.focus({preventScroll:true});requestCaretFollow();}
+  }
+  function replaceEvery(){
+    const hits=refreshFind();if(!hits.length)return;
+    if(hits.length===5000){showToast('Too many matches to replace at once');return;}
+    const id=current().id,before=editor.value,oldTitle=title.value;
+    const replacement=$('replaceQuery').value,result=before.replace(findPattern(),()=>replacement);
+    if(result.length>MAX_TEXT){showToast('Replacement exceeds page length limit');return;}
+    editor.value=result;editor.setSelectionRange(0,0);
+    editor.dispatchEvent(new Event('input',{bubbles:true}));refreshFind();
+    showToast('Replaced '+hits.length+' match'+(hits.length===1?'':'es'),{label:'Undo',action:()=>{
+      if(current().id!==id||editor.value!==result||title.value!==oldTitle){showToast('Page changed — consult version history');return;}
+      editor.value=before;previousEditorLength=before.length;
+      editor.dispatchEvent(new Event('input',{bubbles:true}));
+      adjustHeight({force:true});refreshFind();editor.focus({preventScroll:true});
+    }});
+  }
+  function renderHistoryPreview(){
+    const version=recoveryVersions[Number($('recoverySnapshot').value)||0];if(!version)return;
+    const options=[...version.data.notes,...version.data.trash],past=options[Number($('recoveryPage').value)||0];
+    if(!past)return;
+    const present=model.notes.find(n=>n.id===past.id)||model.trash.find(n=>n.id===past.id);
+    const before=past.text,after=present?.text||'';
+    const beforeLines=before.slice(0,10000).split('\n').slice(0,170);
+    const afterLines=after.slice(0,10000).split('\n').slice(0,170);
+    function show(container,lines,other){
+      container.replaceChildren();
+      const values=new Set(other);
+      for(const line of lines){
+        const span=document.createElement('span');span.textContent=line+'\n';
+        if(!values.has(line))span.className='changed-line';
+        container.append(span);
+      }
+      if(lines.length>=170)container.append(document.createTextNode('\n… preview limited to 170 lines'));
+    }
+    show($('historyOlder'),beforeLines,afterLines);
+    if(present)show($('historyCurrent'),afterLines,beforeLines);
+    else $('historyCurrent').textContent='This page is not in the current collection.';
+    const date=new Date(version.record.savedAt);
+    $('historyInfo').textContent=(Number.isNaN(date.getTime())?'Earlier save':date.toLocaleString())+
+      ' · '+wordCount(before)+' saved words'+(present?' vs '+wordCount(after)+' current words':' · deleted or unavailable')+
+      (before.length>10000||after.length>10000?' · preview shortened, full text is recoverable':'');
+    $('recoveryConfirm').disabled=model.notes.length>=MAX_PAGES;
+  }
+
   async function openRecovery(){
     if(!db || storageMode!=='idb'){showToast('Recovery snapshots unavailable; import a JSON backup');return;}
     try{
