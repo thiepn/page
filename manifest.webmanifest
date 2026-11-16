@@ -1,0 +1,19 @@
+{
+  "name": "Clearpage — A quiet place to write",
+  "short_name": "Clearpage",
+  "description": "Minimal, local-first writing. Your pages stay on your device.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f9f8f5",
+  "theme_color": "#f9f8f5",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
