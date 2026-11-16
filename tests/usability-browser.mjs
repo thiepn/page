@@ -157,7 +157,11 @@ async function scenario(engine,name,viewport,mobile=false){
       await context.setOffline(true);
       await page.reload();
       assert.equal(await page.locator('#editor').count(),1,'offline cached app shell');
-      assert.ok((await page.locator('#editor').inputValue()).includes('Before revision'),'offline local note remains');
+      await waitSaved(page);
+      await page.locator('#openPages').click();
+      await page.locator('#pageSearch').fill('Long writing resume target');
+      await page.locator('.page-item-main').first().click();
+      assert.ok((await page.locator('#editor').inputValue()).includes('Continuing the same long document'),'offline saved notes remain accessible');
       await context.setOffline(false);
       console.log('PWA_OFFLINE_SHELL=PASS');
     }
