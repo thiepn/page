@@ -128,6 +128,7 @@ async function scenario(engine,name,viewport,mobile=false){
     await page.locator('#openPages').click();
     await page.locator('#sidebarNew').click();
     await page.locator('#openPages').click();
+    assert.equal(await page.locator('#pagesTab').getAttribute('aria-pressed'),'true','new pages reset an incompatible sidebar filter');
     await page.locator('.page-item').filter({hasText:'Long writing resume target'}).first().locator('.page-item-main').click();
     assert.ok((await page.evaluate(()=>window.scrollY))<5,name+': returning page initially opens at top');
     assert.equal(await page.locator('#resumeWriting').isVisible(),true,name+': last cursor remains resumable');
