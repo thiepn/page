@@ -14,21 +14,23 @@ self.addEventListener('fetch',event=>{
   const req=event.request;
   if(req.method!=='GET'||new URL(req.url).origin!==self.location.origin)return;
   const path=new URL(req.url).pathname;
+  const requestUrl=new URL(req.url);
   if(req.mode==='navigate'&&(path==='/'||path==='/index.html')){
-    event.respondWith(fetch(req).then(async response=>{
-      if(response.ok){
-        const cache=await caches.open(CACHE);
-        await cache.put('/',response.clone());
+    event.respondWith(fetch(req).then(response=>{
+      // A quota/cache failure must never replace a successful network page.
+      if(response.ok&&!requestUrl.search){
+        const copy=response.clone();
+        event.waitUntil(caches.open(CACHE).then(cache=>cache.put('/',copy)).catch(()=>{}));
       }
       return response;
     }).catch(async()=>await caches.match('/')||Response.error()));
     return;
   }
   if(path==='/manifest.webmanifest'||path==='/icon.svg'){
-    event.respondWith(fetch(req).then(async response=>{
+    event.respondWith(fetch(req).then(response=>{
       if(response.ok){
-        const cache=await caches.open(CACHE);
-        await cache.put(path,response.clone());
+        const copy=response.clone();
+        event.waitUntil(caches.open(CACHE).then(cache=>cache.put(path,copy)).catch(()=>{}));
       }
       return response;
     }).catch(async()=>await caches.match(path)||Response.error()));
