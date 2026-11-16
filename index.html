@@ -682,7 +682,7 @@
   function chooseSelected(){const id=visibleIds[selectedIndex];if(!id)return;if(sidebarView==='trash')restoreTrash(id);else switchPage(id);}
   function switchPage(id){if(!model.notes.some(n=>n.id===id))return;rememberCursor();void save();model.activeId=id;void persistModel();loadPage();closeSidebar();editor.focus({preventScroll:true});}
   function cyclePage(step){const notes=[...model.notes].sort((a,b)=>(Date.parse(b.updatedAt)||0)-(Date.parse(a.updatedAt)||0));if(notes.length<2)return;const index=notes.findIndex(n=>n.id===model.activeId);switchPage(notes[(index+step+notes.length)%notes.length].id);showToast('Page '+(((index+step+notes.length)%notes.length)+1)+' of '+notes.length);}
-  function addPage(){if(model.notes.length>=MAX_PAGES){showToast('Page limit reached — export a backup');return;}rememberCursor();void save();const n=emptyNote();model.notes.push(n);model.activeId=n.id;void persistModel();loadPage();closeSidebar();title.focus({preventScroll:true});}
+  function addPage(){if(model.notes.length>=MAX_PAGES){showToast('Page limit reached — export a backup');return;}rememberCursor();void save();const n=emptyNote();model.notes.push(n);model.activeId=n.id;sidebarView='pages';search.value='';selectedIndex=0;void persistModel();loadPage();closeSidebar();title.focus({preventScroll:true});}
   function confirmDelete(id){const n=model.notes.find(n=>n.id===id);if(!n)return;confirmBox('Delete this page?','“'+pageName(n)+'” will move to Recently deleted, where you can restore it later.','Move to trash',()=>{
     readEditor();const note=model.notes.find(item=>item.id===id);if(!note)return;
     model.trash.unshift({...note,deletedAt:new Date().toISOString()});model.notes=model.notes.filter(item=>item.id!==id);
