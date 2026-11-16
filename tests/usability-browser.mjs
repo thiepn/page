@@ -43,6 +43,10 @@ async function scenario(engine,name,viewport,mobile=false){
     await page.locator('#replaceQuery').fill('three');
     await page.locator('#replaceOne').click();
     assert.equal(await page.locator('#editor').inputValue(),'three two one a.b');
+    await page.locator('#toastUndo').click();
+    assert.equal(await page.locator('#editor').inputValue(),'one two one a.b','single replacement undo');
+    await page.locator('#replaceOne').click();
+    assert.equal(await page.locator('#editor').inputValue(),'three two one a.b');
     await page.locator('#replaceAll').click();
     assert.equal(await page.locator('#editor').inputValue(),'three two three a.b');
     await page.locator('#toastUndo').click();
