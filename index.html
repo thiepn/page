@@ -607,6 +607,8 @@
     }else if(caret.top<safeTop){
       window.scrollBy({top:Math.floor(caret.top-safeTop),behavior:'auto'});
     }
+    lastFollowScrollY=window.scrollY;
+    $('resumeWriting').hidden=true;
   }
   function requestCaretFollow(){
     if(followFrame)cancelAnimationFrame(followFrame);
