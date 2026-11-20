@@ -43,7 +43,7 @@
   .editor::placeholder { color: var(--muted); opacity: .58; }
   .footer { min-height: 54px; padding: 12px clamp(24px, 4.6vw, 74px) 16px; color: var(--muted); font-size: 11px; letter-spacing: .035em; display:flex; align-items:center; justify-content:space-between; gap:12px; position: fixed; bottom:0; left:0; right:0; background: linear-gradient(transparent, var(--bg) 25%); z-index:6; pointer-events:none; }
   .footer > * { pointer-events: auto; }
-  .footer-right { display: flex; align-items:center; gap: 16px; }
+  .footer-right { display: flex; align-items:center; gap: 16px; margin-left:auto; }
   .footer button { font-size:inherit; color:inherit; padding:4px 0; border:0; background:transparent; }
   .footer button:hover { color: var(--ink); }
   .overlay { position:fixed; inset:0; z-index:25; background: rgba(17,17,15,.25); opacity:0; pointer-events:none; transition:opacity .2s; }
@@ -215,7 +215,6 @@
     <textarea id="editor" class="editor" placeholder="Start writing…" spellcheck="true" aria-label="Write here" autocomplete="off"></textarea>
   </main>
   <footer class="footer">
-
     <div class="footer-right"><span id="counter">0 words · 0 characters</span><button id="footerFocus" title="Focus mode">Focus</button></div>
   </footer>
 </div>
@@ -272,7 +271,7 @@
   const title = $('pageTitle'), editor = $('editor'), search = $('pageSearch');
   let model, preferences, db = null, storageMode = 'loading', revision = 0;
   let saveTimer = null, toastTimer = null, toastAction = null, dialogAction = null;
-  let writeQueue = Promise.resolve(), saveRequest = 0, storageBlocked = false;
+  let writeQueue = Promise.resolve(), storageBlocked = false;
   let sidebarView = 'pages', selectedIndex = 0, visibleIds = [], recoveryVersions = [];
   let organization = {pinned:[],recent:[]}, savedCursors = {};
   let lastFollowScrollY = 0;
@@ -411,8 +410,7 @@
       tx.onabort=()=>{if(!completed)reject(failure||tx.error||Error('Save aborted'));};
     });
   }
-  // Background saving remains enabled, but never interrupts writing with status or warnings.
-  function setStatus() {}
+  // Background saving is deliberately silent; failure never interrupts typing.
   function storageFailure(e) {
     // Preserve conflict protection without producing an alert on every keystroke.
     if(e?.code==='CONFLICT')storageBlocked=true;
@@ -450,17 +448,14 @@
   }
   function persistModel({safety=false, repair=false}={}) {
     clearTimeout(saveTimer);
-    if(storageBlocked){setStatus('Not saved — export a backup',true);return writeQueue;}
+    if(storageBlocked)return writeQueue;
     const serialized=JSON.stringify(model);
     const snapshot=JSON.parse(serialized);
-    const seq=++saveRequest;
-    setStatus('Saving…');
     if(storageMode==='idb') {
       writeQueue=writeQueue.catch(()=>{}).then(async()=>{
         const next=await commitRaw(serialized,safety,repair);
         revision=next;
         clearJournalIfSaved(snapshot);
-        if(seq===saveRequest)setStatus('Saved on this device');
       }).catch(e=>{storageFailure(e);});
       return writeQueue;
     }
@@ -468,7 +463,6 @@
       try {
         localStorage.setItem(FALLBACK_KEY,serialized);
         clearJournalIfSaved(snapshot);
-        setStatus('Saved (limited browser storage)');
       } catch(e){storageFailure(e);}
       return Promise.resolve();
     }
@@ -476,12 +470,12 @@
     return Promise.resolve();
   }
   function save(options={}) {readEditor();return persistModel(options);}
-  function scheduleSave() { readEditor();journalDraft();setStatus('Saving…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>{void persistModel();},320); }
+  function scheduleSave() { readEditor();journalDraft();clearTimeout(saveTimer);saveTimer=setTimeout(()=>{void persistModel();},320); }
   async function initStorage() {
     let legacy=normalize(getJSON(FALLBACK_KEY)) || normalize(getJSON(LEGACY_KEY));
     try {
       db=await openDatabase();
-      db.onversionchange=()=>{db.close();storageBlocked=true;setStatus('Storage changed — export a backup',true);};
+      db.onversionchange=()=>{db.close();storageBlocked=true;};
       const rows=await allRows();
       const valid=rows.map(unpack).filter(Boolean);
       const head=valid.find(v=>v.key==='current');
@@ -492,20 +486,19 @@
       else if(latest){
         model=latest.data;
         if(rawHead && !Number.isSafeInteger(rawHead?.record?.revision)) {
-          storageMode='readonly';setStatus('Stored data damaged — export a backup',true);
+          storageMode='readonly';
           return;
         }
         revision=rawHead?.record?.revision||0;
         recovered=true;
       } else if(rows.length){
         // Do not overwrite an unreadable database with a blank page.
-        model=legacy||freshModel();storageMode='readonly';setStatus('Stored data unreadable — restore a backup',true);return;
+        model=legacy||freshModel();storageMode='readonly';return;
       } else {model=legacy||freshModel();revision=0;}
       storageMode='idb';
       const savedAt=(head||latest)?.record?.savedAt || '';
       if(mergeEmergencyDraft(savedAt))fromDraft=true;
       if(!head || fromDraft)await persistModel({repair:recovered});
-      else setStatus('Saved on this device');
       if(recovered)showToast('Recovered the most recent valid saved version');
       else if(fromDraft)showToast('Recovered an unsaved draft');
     } catch(e) {
@@ -516,7 +509,6 @@
       // Don't claim IndexedDB safety when the browser only offers localStorage.
       if(mergeEmergencyDraft(''))showToast('Recovered a draft from local storage');
       persistModel();
-      if(!getJSON(FALLBACK_KEY))setStatus('Limited browser storage — download backups',true);
     }
   }
   async function init() {
@@ -1017,7 +1009,7 @@
     });
     window.addEventListener('beforeprint',()=>{$('printTitle').textContent=current().title.trim();$('printTitle').style.display=current().title.trim()?'block':'none';$('printText').textContent=editor.value;});
   }
-  void init().catch(()=>{model=model||freshModel();storageMode='readonly';loadPage();wire();setStatus('App could not load saved data — export a backup',true);});
+  void init().catch(()=>{model=model||freshModel();storageMode='readonly';loadPage();wire();});
 })();
 </script>
 </body>
