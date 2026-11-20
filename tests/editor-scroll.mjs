@@ -125,6 +125,7 @@ async function assertSilentStorageFailure(){
     await page.waitForTimeout(600);
     assert.equal(await page.locator('#editor').inputValue(),'Writing must remain quiet when storage is blocked.');
     assert.equal(await page.locator('#saveStatus').count(),0,'No persistence status is displayed');
+    assert.equal(await page.locator('.sidebar-foot').count(),0,'No unsolicited backup reminder is displayed');
     assert.equal(await page.locator('#toast.show').count(),0,'No warning toast interrupts typing');
     console.log('Chromium blocked-storage silent writing: PASS');
   }finally{
