@@ -127,6 +127,13 @@ async function assertSilentStorageFailure(){
     assert.equal(await page.locator('#saveStatus').count(),0,'No persistence status is displayed');
     assert.equal(await page.locator('.sidebar-foot').count(),0,'No unsolicited backup reminder is displayed');
     assert.equal(await page.locator('#toast.show').count(),0,'No warning toast interrupts typing');
+    const downloadPromise=page.waitForEvent('download');
+    await page.locator('#menuButton').click();
+    await page.locator('[data-action="backup"]').click();
+    const downloaded=await downloadPromise;
+    const backup=JSON.parse(readFileSync(await downloaded.path(),'utf8'));
+    assert.ok(backup.notes.some(note=>note.text==='Writing must remain quiet when storage is blocked.'),'Manual backup preserves session text with no storage');
+    assert.equal(await page.locator('#toast.show').count(),0,'Manual backup does not show a warning');
     console.log('Chromium blocked-storage silent writing: PASS');
   }finally{
     await context.close();
@@ -202,6 +209,33 @@ async function assertTransientIdbWriteFailure(){
     console.log('Chromium transient IDB write failure and recovery: PASS');
   }finally{await context.close();await browser.close();}
 }
+
+async function assertConflictingTabsStaySilent(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const first=await context.newPage();
+    await first.goto(url);
+    await first.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await first.locator('#editor').fill('Shared baseline');
+    await first.waitForTimeout(500);
+    const second=await context.newPage();
+    await second.goto(url);
+    await second.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await second.locator('#editor').inputValue(),'Shared baseline');
+    await first.locator('#editor').fill('New text from first tab');
+    await first.waitForTimeout(500);
+    await second.locator('#editor').fill('Unsaved text in conflicting tab');
+    await second.waitForTimeout(550);
+    assert.equal(await second.locator('#editor').inputValue(),'Unsaved text in conflicting tab','Conflicting editor remains usable');
+    assert.equal(await second.locator('#toast.show').count(),0,'Conflict never causes warning');
+    assert.equal(await second.locator('#saveStatus').count(),0,'Conflict never exposes save status');
+    await first.reload();
+    await first.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await first.locator('#editor').inputValue(),'New text from first tab','Conflict never overwrites first tab');
+    console.log('Chromium two-tab conflicting writes: PASS');
+  }finally{await context.close();await browser.close();}
+}
 try{
   for(const [name,engine] of [['Chromium',chromium],['Firefox',firefox]]){
     await run(engine,name,1280,800);
@@ -211,5 +245,6 @@ try{
   await assertWorkingFallback();
   await assertIdbWithBlockedLocalStorage();
   await assertTransientIdbWriteFailure();
+  await assertConflictingTabsStaySilent();
   console.log('CLEARPAGE_EDITOR_SCROLL_REGRESSION=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
