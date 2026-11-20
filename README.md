@@ -16,7 +16,7 @@ Open the production URL, or download `index.html` and open it locally.
 
 ## Storage and migration
 
-Writing is stored **only in the current browser on the current origin**. Clearpage prefers IndexedDB, with recovery snapshots and emergency drafts, and explicitly reports reduced/failed persistence modes. Local backups remain important: clearing browser data, private browsing, quota eviction, or device failure may remove notes. The app does not sync between devices, browsers, or its downloaded file and hosted URL.
+Writing is stored **only in the current browser on the current origin**. Clearpage prefers IndexedDB, with recovery snapshots and emergency drafts. Saving runs silently in the background: no save-status banner or storage warnings appear while writing, even when browser storage is unavailable. The editor remains usable in that session; changes that cannot be stored may be lost on reload. Local backups remain important: clearing browser data, private browsing, quota eviction, or device failure may remove notes. The app does not sync between devices, browsers, or its downloaded file and hosted URL.
 
 If migrating from a local `Clearpage.html`, **export a JSON backup in the old app** and import that backup into the hosted site. The hosted URL is a different browser storage origin.
 
