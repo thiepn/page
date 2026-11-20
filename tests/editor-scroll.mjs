@@ -121,7 +121,7 @@ async function assertSilentStorageFailure(){
     await page.goto(url);
     await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
     assert.equal(await page.evaluate(()=>typeof indexedDB),'undefined','IndexedDB is unavailable in this test');
-    await page.locator('#editor').fill('Writing must remain quiet when storage is blocked.');
+    await page.locator('#editor').pressSequentially('Writing must remain quiet when storage is blocked.',{delay:3});
     await page.waitForTimeout(600);
     assert.equal(await page.locator('#editor').inputValue(),'Writing must remain quiet when storage is blocked.');
     assert.equal(await page.locator('#saveStatus').count(),0,'No persistence status is displayed');
@@ -133,11 +133,83 @@ async function assertSilentStorageFailure(){
     await browser.close();
   }
 }
+
+async function assertWorkingFallback(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  await context.addInitScript(()=>Object.defineProperty(window,'indexedDB',{value:undefined,configurable:true}));
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('Local fallback must persist when IndexedDB is missing.');
+    await page.waitForTimeout(550);
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'Local fallback must persist when IndexedDB is missing.');
+    assert.equal(await page.locator('#toast.show').count(),0,'Fallback save does not notify');
+    console.log('Chromium localStorage fallback persistence: PASS');
+  }finally{await context.close();await browser.close();}
+}
+async function assertIdbWithBlockedLocalStorage(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  await context.addInitScript(()=>{
+    Storage.prototype.setItem=function(){throw new DOMException('LocalStorage blocked','QuotaExceededError');};
+  });
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('IndexedDB remains usable when localStorage writes fail.');
+    await page.waitForTimeout(550);
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'IndexedDB remains usable when localStorage writes fail.');
+    assert.equal(await page.locator('#toast.show').count(),0,'No localStorage failure notification');
+    console.log('Chromium IDB save despite blocked localStorage: PASS');
+  }finally{await context.close();await browser.close();}
+}
+async function assertTransientIdbWriteFailure(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage();
+    const errors=[];
+    page.on('pageerror',e=>errors.push(String(e)));
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.evaluate(()=>{
+      window.__originalClearpageTransaction=IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction=function(store,mode,options){
+        if(mode==='readwrite')throw new DOMException('Write disabled','QuotaExceededError');
+        return window.__originalClearpageTransaction.call(this,store,mode,options);
+      };
+    });
+    const editor=page.locator('#editor');
+    await editor.pressSequentially('Writes fail, typing continues.',{delay:4});
+    await page.waitForTimeout(450);
+    assert.equal(await editor.inputValue(),'Writes fail, typing continues.');
+    assert.equal(await page.locator('#toast.show').count(),0,'No warning on failed IDB write');
+    assert.equal(await page.locator('#saveStatus').count(),0,'No status UI on failed write');
+    await page.evaluate(()=>{IDBDatabase.prototype.transaction=window.__originalClearpageTransaction;});
+    await editor.pressSequentially(' Writes recover.',{delay:4});
+    await page.waitForTimeout(550);
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await editor.inputValue(),'Writes fail, typing continues. Writes recover.','Autosave resumes after IDB recovers');
+    assert.deepEqual(errors,[],'No unhandled browser exceptions');
+    console.log('Chromium transient IDB write failure and recovery: PASS');
+  }finally{await context.close();await browser.close();}
+}
 try{
   for(const [name,engine] of [['Chromium',chromium],['Firefox',firefox]]){
     await run(engine,name,1280,800);
     await run(engine,name,390,740);
   }
   await assertSilentStorageFailure();
+  await assertWorkingFallback();
+  await assertIdbWithBlockedLocalStorage();
+  await assertTransientIdbWriteFailure();
   console.log('CLEARPAGE_EDITOR_SCROLL_REGRESSION=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
