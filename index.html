@@ -46,7 +46,6 @@
   .footer-right { display: flex; align-items:center; gap: 16px; }
   .footer button { font-size:inherit; color:inherit; padding:4px 0; border:0; background:transparent; }
   .footer button:hover { color: var(--ink); }
-  .save-status[data-error="true"] { color: #b85d50; }
   .overlay { position:fixed; inset:0; z-index:25; background: rgba(17,17,15,.25); opacity:0; pointer-events:none; transition:opacity .2s; }
   .overlay.open { opacity:1; pointer-events:auto; }
   .sidebar { position:fixed; z-index:30; left:0; top:0; bottom:0; width:min(345px, 87vw); background:var(--surface); box-shadow:var(--shadow); display:flex; flex-direction:column; transform:translateX(-103%); transition: transform .22s ease; }
@@ -216,7 +215,7 @@
     <textarea id="editor" class="editor" placeholder="Start writing…" spellcheck="true" aria-label="Write here" autocomplete="off"></textarea>
   </main>
   <footer class="footer">
-    <span class="save-status" id="saveStatus" role="status" aria-live="polite">Saved on this device</span>
+
     <div class="footer-right"><span id="counter">0 words · 0 characters</span><button id="footerFocus" title="Focus mode">Focus</button></div>
   </footer>
 </div>
@@ -270,7 +269,7 @@
   const MAX_PAGES = 5000;
   const MAX_TEXT = 5000000;
   const $ = id => document.getElementById(id);
-  const title = $('pageTitle'), editor = $('editor'), status = $('saveStatus'), search = $('pageSearch');
+  const title = $('pageTitle'), editor = $('editor'), search = $('pageSearch');
   let model, preferences, db = null, storageMode = 'loading', revision = 0;
   let saveTimer = null, toastTimer = null, toastAction = null, dialogAction = null;
   let writeQueue = Promise.resolve(), saveRequest = 0, storageBlocked = false;
@@ -412,12 +411,11 @@
       tx.onabort=()=>{if(!completed)reject(failure||tx.error||Error('Save aborted'));};
     });
   }
-  function setStatus(message, error=false) { status.textContent=message; status.dataset.error=String(error); }
+  // Background saving remains enabled, but never interrupts writing with status or warnings.
+  function setStatus() {}
   function storageFailure(e) {
-    const conflict=e?.code==='CONFLICT';
-    if(conflict)storageBlocked=true;
-    setStatus(conflict?'Other tab changed data — export a backup':'Not saved — export a backup',true);
-    if(conflict)showToast('Another tab changed your saved data. Export a backup.');
+    // Preserve conflict protection without producing an alert on every keystroke.
+    if(e?.code==='CONFLICT')storageBlocked=true;
   }
   function clearJournalIfSaved(snapshot) {
     try {
@@ -704,7 +702,10 @@
   function confirmPermanentDelete(id){const note=model.trash.find(n=>n.id===id);if(!note)return;confirmBox('Delete permanently?','“'+pageName(note)+'” will be removed from Recently deleted. It may still exist in an older automatic snapshot until that snapshot rotates out.','Delete permanently',()=>{
     void save();model.trash=model.trash.filter(n=>n.id!==id);void persistModel({safety:true});renderPages();showToast('Deleted from Recently deleted');
   });}
-  function showToast(message,option){const node=$('toast'),btn=$('toastUndo');$('toastMessage').textContent=message;
+  function showToast(message,option){
+    // Only offer contextual Undo after an explicit action; never show unsolicited notifications.
+    if(typeof option?.action!=='function')return;
+    const node=$('toast'),btn=$('toastUndo');$('toastMessage').textContent=message;
     toastAction=option?.action||null;btn.hidden=!toastAction;btn.textContent=option?.label||'Undo';node.classList.add('show');
     clearTimeout(toastTimer);toastTimer=setTimeout(()=>{node.classList.remove('show');toastAction=null;btn.hidden=true;},6000);
   }
