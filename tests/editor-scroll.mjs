@@ -41,7 +41,7 @@ async function run(engine,name,width,height){
   page.on('pageerror',e=>errors.push(String(e)));
   try{
     await page.goto(url);
-    await page.waitForFunction(()=>document.querySelector('#saveStatus')?.textContent.includes('Saved'));
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
     const editor=page.locator('#editor');
     await page.locator('#pageTitle').fill('Scroll regression note');
     await editor.fill(text);
@@ -100,10 +100,33 @@ async function run(engine,name,width,height){
     // Actual browser storage persistence; do not introduce any data format changes.
     await page.waitForTimeout(500);
     await page.reload();
-    await page.waitForFunction(()=>document.querySelector('#saveStatus')?.textContent.includes('Saved'));
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
     assert.ok((await editor.inputValue()).includes('Still visible in focus mode.'),name+': IndexedDB persistence survives reload');
     assert.deepEqual(errors,[],name+': no browser errors');
     console.log(name+' '+width+'x'+height+': PASS (long writing, manual scroll, follow caret, switch, focus, typography, reload)');
+  }finally{
+    await context.close();
+    await browser.close();
+  }
+}
+async function assertSilentStorageFailure(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext({viewport:{width:1280,height:800}});
+  await context.addInitScript(()=>{
+    Object.defineProperty(window,'indexedDB',{value:undefined,configurable:true});
+    Storage.prototype.setItem=function(){throw new DOMException('Storage blocked','QuotaExceededError');};
+  });
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.evaluate(()=>typeof indexedDB),'undefined','IndexedDB is unavailable in this test');
+    await page.locator('#editor').fill('Writing must remain quiet when storage is blocked.');
+    await page.waitForTimeout(600);
+    assert.equal(await page.locator('#editor').inputValue(),'Writing must remain quiet when storage is blocked.');
+    assert.equal(await page.locator('#saveStatus').count(),0,'No persistence status is displayed');
+    assert.equal(await page.locator('#toast.show').count(),0,'No warning toast interrupts typing');
+    console.log('Chromium blocked-storage silent writing: PASS');
   }finally{
     await context.close();
     await browser.close();
@@ -114,5 +137,6 @@ try{
     await run(engine,name,1280,800);
     await run(engine,name,390,740);
   }
+  await assertSilentStorageFailure();
   console.log('CLEARPAGE_EDITOR_SCROLL_REGRESSION=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
