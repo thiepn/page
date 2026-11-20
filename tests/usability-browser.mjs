@@ -81,6 +81,17 @@ async function scenario(engine,name,viewport,mobile=false){
     // existing v2 backup still contains only the original notes/trash fields.
     await page.locator('#openPages').click();
     const first=page.locator('.page-item').filter({hasText:'Find and replace note'}).first();
+    if(await first.locator('.page-pin').count()!==1){
+      const snapshot=await page.evaluate(()=>({
+        pageTitle:document.querySelector('#pageTitle')?.value,
+        search:document.querySelector('#pageSearch')?.value,
+        sidebarOpen:document.querySelector('#sidebar')?.classList.contains('open'),
+        sidebarTabs:[...document.querySelectorAll('.sidebar-tabs button')].map(b=>[b.id,b.getAttribute('aria-pressed')]),
+        list:document.querySelector('#pageList')?.textContent,
+        visiblePages:document.querySelector('#pagesTab')?.textContent
+      }));
+      throw new Error(name+': expected page missing from sidebar: '+JSON.stringify(snapshot));
+    }
     await first.locator('.page-pin').click();
     await page.locator('#pinnedTab').click();
     assert.equal(await page.locator('.page-item-main').count(),1);
