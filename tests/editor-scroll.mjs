@@ -79,7 +79,22 @@ async function run(engine,name,width,height){
     assert.equal(await editor.inputValue(),'');
     await page.locator('#openPages').click();
     await page.locator('#pageSearch').fill('Scroll regression note');
-    await page.locator('.page-item-main').first().click();
+    try{
+      await page.locator('.page-item-main').first().click({timeout:6000});
+    }catch(e){
+      const diagnostics=await page.evaluate(()=>({
+        filter:document.querySelector('#pageSearch')?.value,
+        summary:document.querySelector('#searchSummary')?.textContent,
+        tab:document.querySelector('[aria-pressed="true"].sidebar-tabs')?.textContent,
+        tabs:[...document.querySelectorAll('.sidebar-tabs button')].map(b=>[b.id,b.getAttribute('aria-pressed')]),
+        list:document.querySelector('#pageList')?.textContent,
+        counts:document.querySelector('#pagesTab')?.textContent,
+        pageTitle:document.querySelector('#pageTitle')?.value
+      }));
+      await page.locator('#pageSearch').fill('');
+      diagnostics.unfiltered=await page.locator('#pageList').innerText();
+      throw new Error(name+': prior page search failed: '+JSON.stringify(diagnostics)+'; '+String(e));
+    }
     assert.ok((await editor.inputValue()).includes('New line after the initial full document.'));
     assert.ok((await metrics(page)).scrollY<3,name+': switched page must open at top');
 
@@ -121,17 +136,185 @@ async function assertSilentStorageFailure(){
     await page.goto(url);
     await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
     assert.equal(await page.evaluate(()=>typeof indexedDB),'undefined','IndexedDB is unavailable in this test');
-    await page.locator('#editor').fill('Writing must remain quiet when storage is blocked.');
+    await page.locator('#editor').pressSequentially('Writing must remain quiet when storage is blocked.',{delay:3});
     await page.waitForTimeout(600);
     assert.equal(await page.locator('#editor').inputValue(),'Writing must remain quiet when storage is blocked.');
     assert.equal(await page.locator('#saveStatus').count(),0,'No persistence status is displayed');
     assert.equal(await page.locator('.sidebar-foot').count(),0,'No unsolicited backup reminder is displayed');
     assert.equal(await page.locator('#toast.show').count(),0,'No warning toast interrupts typing');
+    const downloadPromise=page.waitForEvent('download');
+    await page.locator('#menuButton').click();
+    await page.locator('[data-action="backup"]').click();
+    const downloaded=await downloadPromise;
+    const backup=JSON.parse(readFileSync(await downloaded.path(),'utf8'));
+    assert.ok(backup.notes.some(note=>note.text==='Writing must remain quiet when storage is blocked.'),'Manual backup preserves session text with no storage');
+    assert.equal(await page.locator('#toast.show').count(),0,'Manual backup does not show a warning');
     console.log('Chromium blocked-storage silent writing: PASS');
   }finally{
     await context.close();
     await browser.close();
   }
+}
+
+async function assertWorkingFallback(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  await context.addInitScript(()=>Object.defineProperty(window,'indexedDB',{value:undefined,configurable:true}));
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('Local fallback must persist when IndexedDB is missing.');
+    await page.waitForTimeout(550);
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'Local fallback must persist when IndexedDB is missing.');
+    assert.equal(await page.locator('#toast.show').count(),0,'Fallback save does not notify');
+    console.log('Chromium localStorage fallback persistence: PASS');
+  }finally{await context.close();await browser.close();}
+}
+async function assertIdbWithBlockedLocalStorage(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  await context.addInitScript(()=>{
+    Storage.prototype.setItem=function(){throw new DOMException('LocalStorage blocked','QuotaExceededError');};
+  });
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('IndexedDB remains usable when localStorage writes fail.');
+    await page.waitForTimeout(550);
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'IndexedDB remains usable when localStorage writes fail.');
+    assert.equal(await page.locator('#toast.show').count(),0,'No localStorage failure notification');
+    console.log('Chromium IDB save despite blocked localStorage: PASS');
+  }finally{await context.close();await browser.close();}
+}
+async function assertTransientIdbWriteFailure(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage();
+    const errors=[];
+    page.on('pageerror',e=>errors.push(String(e)));
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.evaluate(()=>{
+      window.__originalClearpageTransaction=IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction=function(store,mode,options){
+        if(mode==='readwrite')throw new DOMException('Write disabled','QuotaExceededError');
+        return window.__originalClearpageTransaction.call(this,store,mode,options);
+      };
+    });
+    const editor=page.locator('#editor');
+    await editor.pressSequentially('Writes fail, typing continues.',{delay:4});
+    await page.waitForTimeout(450);
+    assert.equal(await editor.inputValue(),'Writes fail, typing continues.');
+    assert.equal(await page.locator('#toast.show').count(),0,'No warning on failed IDB write');
+    assert.equal(await page.locator('#saveStatus').count(),0,'No status UI on failed write');
+    await page.evaluate(()=>{IDBDatabase.prototype.transaction=window.__originalClearpageTransaction;});
+    await editor.pressSequentially(' Writes recover.',{delay:4});
+    await page.waitForTimeout(550);
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await editor.inputValue(),'Writes fail, typing continues. Writes recover.','Autosave resumes after IDB recovers');
+    assert.deepEqual(errors,[],'No unhandled browser exceptions');
+    console.log('Chromium transient IDB write failure and recovery: PASS');
+  }finally{await context.close();await browser.close();}
+}
+
+async function assertConflictingTabsStaySilent(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const first=await context.newPage();
+    await first.goto(url);
+    await first.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await first.locator('#editor').fill('Shared baseline');
+    await first.waitForTimeout(500);
+    const second=await context.newPage();
+    await second.goto(url);
+    await second.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await second.locator('#editor').inputValue(),'Shared baseline');
+    await first.locator('#editor').fill('New text from first tab');
+    await first.waitForTimeout(500);
+    await second.locator('#editor').fill('Unsaved text in conflicting tab');
+    await second.waitForTimeout(550);
+    assert.equal(await second.locator('#editor').inputValue(),'Unsaved text in conflicting tab','Conflicting editor remains usable');
+    assert.equal(await second.locator('#toast.show').count(),0,'Conflict never causes warning');
+    assert.equal(await second.locator('#saveStatus').count(),0,'Conflict never exposes save status');
+    await first.reload();
+    await first.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await first.locator('#editor').inputValue(),'New text from first tab','Conflict never overwrites first tab');
+    console.log('Chromium two-tab conflicting writes: PASS');
+  }finally{await context.close();await browser.close();}
+}
+
+async function injectEmergencyDraft(page,draft){
+  // Simulate a draft left by another tab/crashed old version while this tab reloads.
+  await page.evaluate(d=>{
+    const originalSet=Storage.prototype.setItem;
+    originalSet.call(localStorage,'clearpage.emergency.v2',JSON.stringify(d));
+    Storage.prototype.setItem=function(key,value){
+      if(this===localStorage && key==='clearpage.emergency.v2')return;
+      return originalSet.call(this,key,value);
+    };
+  },draft);
+}
+async function activeStoredId(page){
+  return page.evaluate(()=>new Promise((resolve,reject)=>{
+    const opening=indexedDB.open('clearpage.data.v2',1);
+    opening.onerror=()=>reject(opening.error);
+    opening.onsuccess=()=>{
+      const db=opening.result;
+      const req=db.transaction('snapshots','readonly').objectStore('snapshots').get('current');
+      req.onerror=()=>{db.close();reject(req.error);};
+      req.onsuccess=()=>{const id=JSON.parse(req.result.record.json).activeId;db.close();resolve(id);};
+    };
+  }));
+}
+async function assertCrossTabDraftIsolation(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('Committed text must not be replaced by another tab.');
+    await page.waitForTimeout(550);
+    const id=await activeStoredId(page);
+    await injectEmergencyDraft(page,{id,title:'',text:'Foreign draft',at:Date.now()+2000,ownerId:'some-other-tab',baseRevision:0});
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'Committed text must not be replaced by another tab.');
+    assert.equal(await page.locator('#toast.show').count(),0,'No foreign-draft warning');
+    console.log('Chromium cross-tab emergency draft isolation: PASS');
+  }finally{await context.close();await browser.close();}
+}
+async function assertLegacyDraftPreservedSeparately(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('Original saved version');
+    await page.waitForTimeout(550);
+    const id=await activeStoredId(page);
+    await injectEmergencyDraft(page,{id,title:'',text:'Legacy unsaved draft',at:Date.now()+2000});
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'Legacy unsaved draft','Legacy draft is recovered');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('clearpage.emergency.v2')),null,'Recovered legacy draft is cleared only after persistence');
+    await page.locator('#openPages').click();
+    assert.equal(await page.locator('.page-item').count(),2,'Legacy recovery should not overwrite or duplicate saved note');
+    await page.locator('#pageSearch').fill('Original saved version');
+    await page.locator('.page-item-main').first().click();
+    assert.equal(await page.locator('#editor').inputValue(),'Original saved version','Original committed note remains unchanged');
+    console.log('Chromium legacy draft recovers alongside saved note: PASS');
+  }finally{await context.close();await browser.close();}
 }
 try{
   for(const [name,engine] of [['Chromium',chromium],['Firefox',firefox]]){
@@ -139,5 +322,11 @@ try{
     await run(engine,name,390,740);
   }
   await assertSilentStorageFailure();
+  await assertWorkingFallback();
+  await assertIdbWithBlockedLocalStorage();
+  await assertTransientIdbWriteFailure();
+  await assertConflictingTabsStaySilent();
+  await assertCrossTabDraftIsolation();
+  await assertLegacyDraftPreservedSeparately();
   console.log('CLEARPAGE_EDITOR_SCROLL_REGRESSION=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}

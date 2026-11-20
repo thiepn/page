@@ -19,7 +19,28 @@ const server=createServer((req,res)=>{
 await new Promise(done=>server.listen(0,'127.0.0.1',done));
 const url='http://127.0.0.1:'+server.address().port+'/';
 const pause=ms=>new Promise(done=>setTimeout(done,ms));
-const waitSaved=page=>page.waitForFunction(()=>document.getElementById('saveStatus')?.textContent.startsWith('Saved'),{timeout:6000});
+// Assert the actual persisted note, not the intentionally removed save-status UI.
+const waitSaved=page=>page.waitForFunction(async()=>{
+  if(document.documentElement.dataset.clearpageReady!=='true')return false;
+  const title=document.querySelector('#pageTitle')?.value;
+  const text=document.querySelector('#editor')?.value;
+  try {
+    const db=await new Promise((resolve,reject)=>{
+      const req=indexedDB.open('clearpage.data.v2',1);
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error);
+    });
+    const row=await new Promise((resolve,reject)=>{
+      const req=db.transaction('snapshots','readonly').objectStore('snapshots').get('current');
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error);
+    });
+    db.close();
+    const data=JSON.parse(row?.record?.json||'null');
+    const note=data?.notes?.find(n=>n.id===data.activeId);
+    return note?.title===title && note?.text===text;
+  }catch{return false;}
+},undefined,{timeout:10000});
 const saveText=async(page,value)=>{
   await page.locator('#editor').fill(value);
   await page.waitForTimeout(540);
@@ -60,6 +81,17 @@ async function scenario(engine,name,viewport,mobile=false){
     // existing v2 backup still contains only the original notes/trash fields.
     await page.locator('#openPages').click();
     const first=page.locator('.page-item').filter({hasText:'Find and replace note'}).first();
+    if(await first.locator('.page-pin').count()!==1){
+      const snapshot=await page.evaluate(()=>({
+        pageTitle:document.querySelector('#pageTitle')?.value,
+        search:document.querySelector('#pageSearch')?.value,
+        sidebarOpen:document.querySelector('#sidebar')?.classList.contains('open'),
+        sidebarTabs:[...document.querySelectorAll('.sidebar-tabs button')].map(b=>[b.id,b.getAttribute('aria-pressed')]),
+        list:document.querySelector('#pageList')?.textContent,
+        visiblePages:document.querySelector('#pagesTab')?.textContent
+      }));
+      throw new Error(name+': expected page missing from sidebar: '+JSON.stringify(snapshot));
+    }
     await first.locator('.page-pin').click();
     await page.locator('#pinnedTab').click();
     assert.equal(await page.locator('.page-item-main').count(),1);

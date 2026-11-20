@@ -258,6 +258,7 @@
   const LEGACY_KEY = 'clearpage.app.v1';
   const FALLBACK_KEY = 'clearpage.app.v2.fallback';
   const DRAFT_KEY = 'clearpage.emergency.v2';
+  const DRAFT_OWNER_KEY = 'clearpage.emergency-owner.v1';
   const PREF_KEY = 'clearpage.preferences.v1';
   // UI metadata is deliberately separate from v2 note snapshots and backups.
   const ORGANIZATION_KEY = 'clearpage.organization.v1';
@@ -278,6 +279,14 @@
   let followFrame = 0, composing = false;
 
   const makeId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Session-scoped ownership keeps an unsaved draft from another tab out of this editor.
+  const draftOwnerId = (() => {
+    try {
+      let owner=sessionStorage.getItem(DRAFT_OWNER_KEY);
+      if(!owner){owner=makeId();sessionStorage.setItem(DRAFT_OWNER_KEY,owner);}
+      return owner;
+    } catch { return null; }
+  })();
   const emptyNote = () => ({id:makeId(), title:'', text:'', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
   const freshModel = () => { const note=emptyNote(); return {notes:[note], trash:[], activeId:note.id}; };
   function getJSON(key) { try { const value=localStorage.getItem(key); return value === null ? null : JSON.parse(value); } catch { return null; } }
@@ -417,9 +426,9 @@
   function clearJournalIfSaved(snapshot) {
     try {
       const draft=getJSON(DRAFT_KEY);
-      if(!draft)return;
-      const n=[...snapshot.notes,...snapshot.trash].find(n=>n.id===draft.id);
-      if(n && n.title===draft.title && n.text===draft.text) localStorage.removeItem(DRAFT_KEY);
+      if(!draft || (draft.ownerId && draft.ownerId!==draftOwnerId))return;
+      const saved=[...snapshot.notes,...snapshot.trash].some(n=>n.title===draft.title && n.text===draft.text);
+      if(saved)localStorage.removeItem(DRAFT_KEY);
     } catch {}
   }
   function journalDraft() {
@@ -427,17 +436,25 @@
     // A small synchronous emergency draft bridges the debounce / tab-close window.
     // Oversized drafts must rely on IDB commits rather than exhausting localStorage.
     if(!n || editor.value.length>250000)return;
-    try { localStorage.setItem(DRAFT_KEY,JSON.stringify({id:n.id,title:title.value,text:editor.value,at:Date.now()})); } catch {}
+    try { localStorage.setItem(DRAFT_KEY,JSON.stringify({id:n.id,title:title.value,text:editor.value,at:Date.now(),ownerId:draftOwnerId,baseRevision:revision})); } catch {}
   }
   function mergeEmergencyDraft(snapshotSavedAt) {
     const draft=getJSON(DRAFT_KEY);
     if(!draft || typeof draft.id!=='string' || typeof draft.title!=='string' || typeof draft.text!=='string' || draft.text.length>250000 || draft.title.length>160 || !Number.isFinite(draft.at))return false;
     if(draft.at<=Date.parse(snapshotSavedAt||0) || draft.at>Date.now()+60000)return false;
+    // Never restore another tab's draft. A stale/legacy draft may be preserved
+    // as a separate note but may not overwrite a newer committed version.
+    if(draft.ownerId && draft.ownerId!==draftOwnerId)return false;
+    const stale=Number.isSafeInteger(draft.baseRevision) && draft.baseRevision!==revision;
+    const legacy=!draft.ownerId;
     const n=model.notes.find(n=>n.id===draft.id);
     if(n && n.title===draft.title && n.text===draft.text)return false;
-    if(n){ n.title=draft.title;n.text=draft.text;n.updatedAt=new Date(draft.at).toISOString();model.activeId=n.id; }
-    else if(model.notes.length<MAX_PAGES){const added={...emptyNote(),title:draft.title||'Recovered draft',text:draft.text};model.notes.push(added);model.activeId=added.id;}
-    else return false;
+    if(n && !legacy && !stale){
+      n.title=draft.title;n.text=draft.text;n.updatedAt=new Date(draft.at).toISOString();model.activeId=n.id;
+    } else if(model.notes.length<MAX_PAGES){
+      const added={...emptyNote(),title:draft.title,text:draft.text,updatedAt:new Date(draft.at).toISOString()};
+      model.notes.push(added);model.activeId=added.id;
+    } else return false;
     return true;
   }
   function readEditor() {
