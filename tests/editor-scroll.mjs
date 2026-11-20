@@ -79,7 +79,22 @@ async function run(engine,name,width,height){
     assert.equal(await editor.inputValue(),'');
     await page.locator('#openPages').click();
     await page.locator('#pageSearch').fill('Scroll regression note');
-    await page.locator('.page-item-main').first().click();
+    try{
+      await page.locator('.page-item-main').first().click({timeout:6000});
+    }catch(e){
+      const diagnostics=await page.evaluate(()=>({
+        filter:document.querySelector('#pageSearch')?.value,
+        summary:document.querySelector('#searchSummary')?.textContent,
+        tab:document.querySelector('[aria-pressed="true"].sidebar-tabs')?.textContent,
+        tabs:[...document.querySelectorAll('.sidebar-tabs button')].map(b=>[b.id,b.getAttribute('aria-pressed')]),
+        list:document.querySelector('#pageList')?.textContent,
+        counts:document.querySelector('#pagesTab')?.textContent,
+        pageTitle:document.querySelector('#pageTitle')?.value
+      }));
+      await page.locator('#pageSearch').fill('');
+      diagnostics.unfiltered=await page.locator('#pageList').innerText();
+      throw new Error(name+': prior page search failed: '+JSON.stringify(diagnostics)+'; '+String(e));
+    }
     assert.ok((await editor.inputValue()).includes('New line after the initial full document.'));
     assert.ok((await metrics(page)).scrollY<3,name+': switched page must open at top');
 
