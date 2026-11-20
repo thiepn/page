@@ -236,6 +236,71 @@ async function assertConflictingTabsStaySilent(){
     console.log('Chromium two-tab conflicting writes: PASS');
   }finally{await context.close();await browser.close();}
 }
+
+async function injectEmergencyDraft(page,draft){
+  // Simulate a draft left by another tab/crashed old version while this tab reloads.
+  await page.evaluate(d=>{
+    const originalSet=Storage.prototype.setItem;
+    originalSet.call(localStorage,'clearpage.emergency.v2',JSON.stringify(d));
+    Storage.prototype.setItem=function(key,value){
+      if(this===localStorage && key==='clearpage.emergency.v2')return;
+      return originalSet.call(this,key,value);
+    };
+  },draft);
+}
+async function activeStoredId(page){
+  return page.evaluate(()=>new Promise((resolve,reject)=>{
+    const opening=indexedDB.open('clearpage.data.v2',1);
+    opening.onerror=()=>reject(opening.error);
+    opening.onsuccess=()=>{
+      const db=opening.result;
+      const req=db.transaction('snapshots','readonly').objectStore('snapshots').get('current');
+      req.onerror=()=>{db.close();reject(req.error);};
+      req.onsuccess=()=>{const id=JSON.parse(req.result.record.json).activeId;db.close();resolve(id);};
+    };
+  }));
+}
+async function assertCrossTabDraftIsolation(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('Committed text must not be replaced by another tab.');
+    await page.waitForTimeout(550);
+    const id=await activeStoredId(page);
+    await injectEmergencyDraft(page,{id,title:'',text:'Foreign draft',at:Date.now()+2000,ownerId:'some-other-tab',baseRevision:0});
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'Committed text must not be replaced by another tab.');
+    assert.equal(await page.locator('#toast.show').count(),0,'No foreign-draft warning');
+    console.log('Chromium cross-tab emergency draft isolation: PASS');
+  }finally{await context.close();await browser.close();}
+}
+async function assertLegacyDraftPreservedSeparately(){
+  const browser=await chromium.launch({headless:true});
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage();
+    await page.goto(url);
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    await page.locator('#editor').fill('Original saved version');
+    await page.waitForTimeout(550);
+    const id=await activeStoredId(page);
+    await injectEmergencyDraft(page,{id,title:'',text:'Legacy unsaved draft',at:Date.now()+2000});
+    await page.reload();
+    await page.waitForFunction(()=>document.documentElement.dataset.clearpageReady==='true');
+    assert.equal(await page.locator('#editor').inputValue(),'Legacy unsaved draft','Legacy draft is recovered');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('clearpage.emergency.v2')),null,'Recovered legacy draft is cleared only after persistence');
+    await page.locator('#openPages').click();
+    assert.equal(await page.locator('.page-item').count(),2,'Legacy recovery should not overwrite or duplicate saved note');
+    await page.locator('#pageSearch').fill('Original saved version');
+    await page.locator('.page-item-main').first().click();
+    assert.equal(await page.locator('#editor').inputValue(),'Original saved version','Original committed note remains unchanged');
+    console.log('Chromium legacy draft recovers alongside saved note: PASS');
+  }finally{await context.close();await browser.close();}
+}
 try{
   for(const [name,engine] of [['Chromium',chromium],['Firefox',firefox]]){
     await run(engine,name,1280,800);
@@ -246,5 +311,7 @@ try{
   await assertIdbWithBlockedLocalStorage();
   await assertTransientIdbWriteFailure();
   await assertConflictingTabsStaySilent();
+  await assertCrossTabDraftIsolation();
+  await assertLegacyDraftPreservedSeparately();
   console.log('CLEARPAGE_EDITOR_SCROLL_REGRESSION=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
