@@ -409,7 +409,7 @@
       tx.onabort=()=>{if(!completed)reject(failure||tx.error||Error('Save aborted'));};
     });
   }
-  // Background saving is deliberately silent; failure never interrupts typing.
+  // Background saving is deliberately silent; no failure or save status may interrupt typing.
   function storageFailure(e) {
     // Preserve conflict protection without producing an alert on every keystroke.
     if(e?.code==='CONFLICT')storageBlocked=true;
