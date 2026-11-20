@@ -1,6 +1,6 @@
 // Cache only the public, static writing shell. Never cache account callbacks,
 // tokens, user documents, API responses, or cross-origin requests.
-const CACHE='clearpage-shell-v1.3';
+const CACHE='clearpage-shell-v1.4';
 const SHELL=['/','/manifest.webmanifest','/icon.svg'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)));
