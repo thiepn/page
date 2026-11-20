@@ -517,6 +517,7 @@
     await initStorage();
     if(!model)model=freshModel();
     loadOrganization();loadPage();wire();
+    document.documentElement.dataset.clearpageReady='true';
     if('serviceWorker' in navigator && window.isSecureContext){
       navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
     }
@@ -1008,7 +1009,7 @@
     });
     window.addEventListener('beforeprint',()=>{$('printTitle').textContent=current().title.trim();$('printTitle').style.display=current().title.trim()?'block':'none';$('printText').textContent=editor.value;});
   }
-  void init().catch(()=>{model=model||freshModel();storageMode='readonly';loadPage();wire();});
+  void init().catch(()=>{model=model||freshModel();storageMode='readonly';loadPage();wire();document.documentElement.dataset.clearpageReady='true';});
 })();
 </script>
 </body>
